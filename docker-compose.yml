@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: expense_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: expense_management
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: expense_api
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/expense_management?schema=public
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      JWT_EXPIRATION: 24h
+      PORT: 3001
+    ports:
+      - '3001:3001'
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:

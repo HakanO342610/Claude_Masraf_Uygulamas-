@@ -1,0 +1,14 @@
+{
+  "name": "expense-management",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "backend": "npm run start:dev --workspace=apps/backend",
+    "web": "npm run dev --workspace=apps/web",
+    "build:all": "npm run build --workspaces"
+  }
+}
