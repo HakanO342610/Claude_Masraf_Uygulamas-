@@ -11,3 +11,21 @@ coverage/
 *.pem
 uploads/
 .next/
+
+# OCR data (large binary files)
+*.traineddata
+
+# Temp & debug files
+tmp/
+*.tmp
+*.bak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
