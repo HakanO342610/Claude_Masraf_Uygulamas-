@@ -63,6 +63,7 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
           SizedBox(
             height: 56,
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               children: _filters.entries.map((entry) {
@@ -161,6 +162,7 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
 
   Widget _buildExpenseList() {
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: _expenses.length,
       itemBuilder: (context, index) {

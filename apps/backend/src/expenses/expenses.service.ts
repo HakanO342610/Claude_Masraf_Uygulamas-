@@ -75,8 +75,8 @@ export class ExpensesService {
     const expense = await this.prisma.expense.findUnique({ where: { id } });
     if (!expense) throw new NotFoundException('Expense not found');
     if (expense.userId !== userId) throw new ForbiddenException();
-    if (expense.status !== ExpenseStatus.DRAFT) {
-      throw new BadRequestException('Only draft expenses can be edited');
+    if (expense.status === ExpenseStatus.FINANCE_APPROVED || expense.status === ExpenseStatus.POSTED_TO_SAP) {
+      throw new BadRequestException('Approved expenses cannot be edited');
     }
 
     return this.prisma.expense.update({
@@ -89,8 +89,8 @@ export class ExpensesService {
     const expense = await this.prisma.expense.findUnique({ where: { id } });
     if (!expense) throw new NotFoundException('Expense not found');
     if (expense.userId !== userId) throw new ForbiddenException();
-    if (expense.status !== ExpenseStatus.DRAFT) {
-      throw new BadRequestException('Only draft expenses can be deleted');
+    if (expense.status === ExpenseStatus.FINANCE_APPROVED || expense.status === ExpenseStatus.POSTED_TO_SAP) {
+      throw new BadRequestException('Approved expenses cannot be deleted');
     }
 
     return this.prisma.expense.delete({ where: { id } });
@@ -100,8 +100,14 @@ export class ExpensesService {
     const expense = await this.prisma.expense.findUnique({ where: { id } });
     if (!expense) throw new NotFoundException('Expense not found');
     if (expense.userId !== userId) throw new ForbiddenException();
-    if (expense.status !== ExpenseStatus.DRAFT) {
-      throw new BadRequestException('Only draft expenses can be submitted');
+    if (expense.status === ExpenseStatus.FINANCE_APPROVED || expense.status === ExpenseStatus.POSTED_TO_SAP) {
+      throw new BadRequestException('Approved expenses cannot be submitted');
+    }
+
+    if (expense.status === ExpenseStatus.SUBMITTED || expense.status === ExpenseStatus.MANAGER_APPROVED) {
+      // Zaten onaya gönderilmişse tekrar onay akışı başlatmaya gerek yok.
+      // Düzenleme işlemi (update) yeterli.
+      return expense;
     }
 
     // Find manager

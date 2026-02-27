@@ -29,7 +29,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     });
 
     try {
-      _pendingExpenses = await _api.getExpenses(status: 'SUBMITTED', limit: 100);
+      _pendingExpenses = await _api.getPendingApprovals();
     } on ApiException catch (e) {
       _error = e.message;
     } catch (e) {
@@ -214,6 +214,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
 
   Widget _buildApprovalList() {
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: _pendingExpenses.length,
       itemBuilder: (context, index) {

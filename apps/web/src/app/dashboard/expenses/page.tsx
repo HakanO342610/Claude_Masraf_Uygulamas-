@@ -8,6 +8,9 @@ import {
   Loader2,
   AlertTriangle,
   Filter,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { expenseApi } from '@/lib/api';
 import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
@@ -40,17 +43,28 @@ export default function ExpensesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  const totalPages = Math.ceil(expenses.length / pageSize);
+  const paginatedExpenses = expenses.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   useEffect(() => {
+    setCurrentPage(1);
     fetchExpenses();
-  }, [statusFilter]);
+  }, [statusFilter, fromDate, toDate]);
 
   const fetchExpenses = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const params = statusFilter ? { status: statusFilter } : undefined;
-      const response = await expenseApi.getAll(params);
+      const params: Record<string, string> = {};
+      if (statusFilter) params.status = statusFilter;
+      if (fromDate) params.fromDate = fromDate;
+      if (toDate) params.toDate = toDate;
+      const response = await expenseApi.getAll(Object.keys(params).length > 0 ? params : undefined);
       const data = Array.isArray(response.data) ? response.data : response.data.data || [];
       setExpenses(data);
     } catch (err: any) {
@@ -78,7 +92,7 @@ export default function ExpensesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-gray-400" />
           <span className="text-sm font-medium text-gray-600">Filter:</span>
@@ -94,6 +108,38 @@ export default function ExpensesPage() {
             </option>
           ))}
         </select>
+
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-gray-400" />
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            placeholder="From"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+          <span className="text-sm text-gray-400">-</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            placeholder="To"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+
+        {(statusFilter || fromDate || toDate) && (
+          <button
+            onClick={() => {
+              setStatusFilter('');
+              setFromDate('');
+              setToDate('');
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+          >
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {/* Expenses table */}
@@ -131,7 +177,7 @@ export default function ExpensesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {expenses.map((expense) => (
+                {paginatedExpenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-3.5 text-gray-900">
                       {format(new Date(expense.expenseDate), 'dd MMM yyyy')}
@@ -160,6 +206,44 @@ export default function ExpensesPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {!isLoading && !error && expenses.length > pageSize && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, expenses.length)} of {expenses.length} expenses
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="rounded-lg border border-gray-300 bg-white p-2 text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  page === currentPage
+                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-lg border border-gray-300 bg-white p-2 text-gray-500 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

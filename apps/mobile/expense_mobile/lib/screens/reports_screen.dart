@@ -58,6 +58,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           : RefreshIndicator(
               onRefresh: _loadData,
               child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
                   // Summary Cards

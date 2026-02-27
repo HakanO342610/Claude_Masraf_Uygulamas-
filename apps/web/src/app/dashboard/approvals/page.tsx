@@ -8,6 +8,9 @@ import {
   Loader2,
   AlertTriangle,
   MessageSquare,
+  FileText,
+  Building2,
+  FolderOpen,
 } from 'lucide-react';
 import { expenseApi } from '@/lib/api';
 import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
@@ -20,6 +23,9 @@ interface Approval {
   category: string;
   status: string;
   description?: string;
+  costCenter?: string;
+  projectCode?: string;
+  receiptUrl?: string;
   user?: { name: string; email: string; department?: string };
 }
 
@@ -39,8 +45,9 @@ export default function ApprovalsPage() {
       setIsLoading(true);
       setError(null);
       const response = await expenseApi.getPendingApprovals();
-      const data = Array.isArray(response.data) ? response.data : response.data.data || [];
-      setApprovals(data);
+      const rawData = Array.isArray(response.data) ? response.data : response.data.data || [];
+      const mappedApprovals = rawData.map((d: any) => d.expense ? d.expense : d);
+      setApprovals(mappedApprovals);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load pending approvals');
     } finally {
@@ -163,10 +170,38 @@ export default function ApprovalsPage() {
                         }).format(approval.amount)}
                       </span>
                     </span>
+                    {approval.costCenter && (
+                      <span className="flex items-center gap-1">
+                        <Building2 className="h-3.5 w-3.5 text-gray-400" />
+                        <span className="text-gray-400">Cost Center:</span>{' '}
+                        {approval.costCenter}
+                      </span>
+                    )}
+                    {approval.projectCode && (
+                      <span className="flex items-center gap-1">
+                        <FolderOpen className="h-3.5 w-3.5 text-gray-400" />
+                        <span className="text-gray-400">Project:</span>{' '}
+                        {approval.projectCode}
+                      </span>
+                    )}
                   </div>
 
                   {approval.description && (
                     <p className="text-sm text-gray-500 mt-1">{approval.description}</p>
+                  )}
+
+                  {approval.receiptUrl && (
+                    <div className="mt-2">
+                      <a
+                        href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/${approval.receiptUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-100"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        View Receipt
+                      </a>
+                    </div>
                   )}
                 </div>
               </div>

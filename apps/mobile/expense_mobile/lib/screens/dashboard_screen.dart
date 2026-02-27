@@ -59,22 +59,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
-  void _onTabTapped(int index) {
-    switch (index) {
-      case 0:
-        break; // Already on dashboard
-      case 1:
-        Navigator.of(context).pushNamed('/expenses');
-        break;
-      case 2:
-        Navigator.of(context).pushNamed('/receipts');
-        break;
-      case 3:
-        Navigator.of(context).pushNamed('/reports');
-        break;
-      case 4:
-        Navigator.of(context).pushNamed('/approvals');
-        break;
+  void _onTabTapped(int index, bool canApprove) async {
+    if (index == 0) {
+      _loadData(); // Refresh dashboard when tapping dashboard tab
+      return;
+    }
+    
+    final routes = ['/', '/expenses', '/receipts'];
+    if (canApprove) {
+      routes.add('/reports');
+      routes.add('/approvals');
+    }
+    final authService = context.read<AuthService>();
+    if (authService.user?.isAdmin == true) {
+      routes.add('/users');
+    }
+    
+    if (index < routes.length) {
+      await Navigator.of(context).pushNamed(routes[index]);
+      // Reload data when returning from any screen
+      _loadData();
+      if (mounted) setState(() => _currentIndex = 0);
     }
   }
 
@@ -150,34 +155,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() => _currentIndex = index);
-          _onTabTapped(index);
+          _onTabTapped(index, user?.canApprove ?? false);
         },
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard),
             label: 'Dashboard',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.receipt_long_outlined),
             selectedIcon: Icon(Icons.receipt_long),
             label: 'Expenses',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.camera_alt_outlined),
             selectedIcon: Icon(Icons.camera_alt),
             label: 'Receipts',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: 'Reports',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.approval_outlined),
-            selectedIcon: Icon(Icons.approval),
-            label: 'Approvals',
-          ),
+          if (user?.canApprove == true)
+            const NavigationDestination(
+              icon: Icon(Icons.bar_chart_outlined),
+              selectedIcon: Icon(Icons.bar_chart),
+              label: 'Reports',
+            ),
+          if (user?.canApprove == true)
+            const NavigationDestination(
+              icon: Icon(Icons.approval_outlined),
+              selectedIcon: Icon(Icons.approval),
+              label: 'Approvals',
+            ),
+          if (user?.isAdmin == true)
+            const NavigationDestination(
+              icon: Icon(Icons.people_outline),
+              selectedIcon: Icon(Icons.people),
+              label: 'Users',
+            ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -219,6 +232,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildDashboardContent() {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
         // Greeting

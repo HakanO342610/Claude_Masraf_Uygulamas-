@@ -48,7 +48,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
 
     setState(() => _isUploading = true);
     try {
-      await _api.uploadReceipt(image.path, image.mimeType ?? 'image/jpeg');
+      await _api.uploadReceipt(image);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Receipt uploaded successfully')),
@@ -77,7 +77,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
 
     setState(() => _isUploading = true);
     try {
-      await _api.uploadReceipt(photo.path, photo.mimeType ?? 'image/jpeg');
+      await _api.uploadReceipt(photo);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Receipt uploaded successfully')),
@@ -180,6 +180,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
               : RefreshIndicator(
                   onRefresh: _loadReceipts,
                   child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
                     itemCount: _receipts.length,
                     itemBuilder: (context, index) {

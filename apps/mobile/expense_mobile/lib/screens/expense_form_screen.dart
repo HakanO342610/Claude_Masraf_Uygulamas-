@@ -33,6 +33,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   bool _isUploading = false;
   String? _ocrMessage;
 
+  late List<String> _availableCategories;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +42,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     _costCenterController = TextEditingController();
     _projectCodeController = TextEditingController();
     _descriptionController = TextEditingController();
+    _availableCategories = List.from(Expense.categories);
   }
 
   @override
@@ -56,6 +59,10 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       _costCenterController.text = args.costCenter;
       _projectCodeController.text = args.projectCode;
       _descriptionController.text = args.description;
+
+      if (!_availableCategories.contains(args.category)) {
+        _availableCategories.add(args.category);
+      }
     }
   }
 
@@ -95,7 +102,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     });
 
     try {
-      final res = await _api.uploadReceipt(image.path, image.mimeType ?? 'image/jpeg');
+      final res = await _api.uploadReceipt(image);
       
       setState(() {
         _uploadedReceiptId = res['id'];
@@ -235,7 +242,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   @override
   Widget build(BuildContext context) {
     final isViewOnly = _existingExpense != null &&
-        !_existingExpense!.isDraft;
+        _existingExpense!.isApproved;
 
     return Scaffold(
       appBar: AppBar(
@@ -251,6 +258,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           children: [
             // OCR / Receipt Section
@@ -388,7 +396,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 labelText: 'Category',
                 prefixIcon: Icon(Icons.category_outlined),
               ),
-              items: Expense.categories.map((category) {
+              items: _availableCategories.map((category) {
                 return DropdownMenuItem(
                   value: category,
                   child: Text(category),

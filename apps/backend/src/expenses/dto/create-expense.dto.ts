@@ -47,25 +47,6 @@ export class CreateExpenseDto {
   description?: string;
 }
 
-export class UpdateExpenseDto {
-  @IsNumber()
-  @Min(0.01)
-  @IsOptional()
-  amount?: number;
+import { PartialType } from '@nestjs/swagger';
 
-  @IsString()
-  @IsOptional()
-  category?: string;
-
-  @IsString()
-  @IsOptional()
-  description?: string;
-
-  @IsString()
-  @IsOptional()
-  costCenter?: string;
-
-  @IsString()
-  @IsOptional()
-  projectCode?: string;
-}
+export class UpdateExpenseDto extends PartialType(CreateExpenseDto) {}

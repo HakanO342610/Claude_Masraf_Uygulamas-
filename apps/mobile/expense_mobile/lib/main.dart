@@ -9,6 +9,7 @@ import 'screens/expense_form_screen.dart';
 import 'screens/approval_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/receipts_screen.dart';
+import 'screens/users_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,7 @@ class ExpenseApp extends StatelessWidget {
           '/approvals': (_) => const ApprovalScreen(),
           '/reports': (_) => const ReportsScreen(),
           '/receipts': (_) => const ReceiptsScreen(),
+          '/users': (_) => const UsersScreen(),
         },
       ),
     );

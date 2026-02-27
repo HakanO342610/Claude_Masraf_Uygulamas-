@@ -57,9 +57,8 @@ describe('AuthService', () => {
         password: 'password123',
       });
 
-      expect(result.accessToken).toBe('mock-jwt-token');
-      expect(result.refreshToken).toBeDefined();
-      expect(result.user.email).toBe('test@test.com');
+      expect(result.message).toContain('Registration successful');
+      expect(result.email).toBe('test@test.com');
     });
 
     it('should throw ConflictException for duplicate email', async () => {
@@ -82,6 +81,8 @@ describe('AuthService', () => {
         email: 'test@test.com',
         password: 'hashed-password',
         role: 'EMPLOYEE',
+        isEmailConfirmed: true,
+        isApproved: true,
       });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       mockPrisma.refreshToken.create.mockResolvedValue({});

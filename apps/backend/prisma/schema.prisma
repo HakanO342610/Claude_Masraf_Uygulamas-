@@ -7,6 +7,139 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                String         @id @default(uuid())
+  sapEmployeeId     String?        @unique @map("sap_employee_id")
+  name              String
+  email             String         @unique
+  password          String
+  department        String?
+  role              UserRole       @default(EMPLOYEE)
+  managerId         String?        @map("manager_id")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  confirmationToken String?        @map("confirmation_token")
+  isApproved        Boolean        @default(false) @map("is_approved")
+  isEmailConfirmed  Boolean        @default(false) @map("is_email_confirmed")
+  approvals         Approval[]
+  auditLogs         AuditLog[]
+  expenses          Expense[]
+  receipts          Receipt[]
+  refreshTokens     RefreshToken[]
+  manager           User?          @relation("UserManager", fields: [managerId], references: [id])
+  subordinates      User[]         @relation("UserManager")
+
+  @@map("users")
+}
+
+model Expense {
+  id                String            @id @default(uuid())
+  userId            String            @map("user_id")
+  expenseDate       DateTime          @map("expense_date")
+  amount            Decimal           @db.Decimal(12, 2)
+  currency          String            @default("TRY")
+  taxAmount         Decimal?          @map("tax_amount") @db.Decimal(12, 2)
+  category          String
+  projectCode       String?           @map("project_code")
+  costCenter        String?           @map("cost_center")
+  description       String?
+  status            ExpenseStatus     @default(DRAFT)
+  sapDocumentNumber String?           @map("sap_document_number")
+  receiptUrl        String?           @map("receipt_url")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  approvals         Approval[]
+  auditLogs         AuditLog[]
+  user              User              @relation(fields: [userId], references: [id])
+  receipts          Receipt[]
+  sapPostingQueue   SapPostingQueue[]
+
+  @@map("expenses")
+}
+
+model Approval {
+  id         String         @id @default(uuid())
+  expenseId  String         @map("expense_id")
+  approverId String         @map("approver_id")
+  status     ApprovalStatus @default(PENDING)
+  comment    String?
+  actionDate DateTime?      @map("action_date")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  approver   User           @relation(fields: [approverId], references: [id])
+  expense    Expense        @relation(fields: [expenseId], references: [id])
+
+  @@map("approvals")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+model SapPostingQueue {
+  id        String    @id @default(uuid())
+  expenseId String    @map("expense_id")
+  payload   Json
+  status    String    @default("PENDING")
+  attempts  Int       @default(0)
+  lastError String?   @map("last_error")
+  nextRetry DateTime? @map("next_retry")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  expense   Expense   @relation(fields: [expenseId], references: [id])
+
+  @@map("sap_posting_queue")
+}
+
+model SapMasterData {
+  id       String   @id @default(uuid())
+  type     String
+  code     String
+  name     String
+  isActive Boolean  @default(true) @map("is_active")
+  syncedAt DateTime @default(now()) @map("synced_at")
+
+  @@unique([type, code])
+  @@map("sap_master_data")
+}
+
+model Receipt {
+  id         String   @id @default(uuid())
+  expenseId  String?  @map("expense_id")
+  fileName   String   @map("file_name")
+  filePath   String   @map("file_path")
+  mimeType   String   @map("mime_type")
+  fileSize   Int      @map("file_size")
+  ocrStatus  String   @default("PENDING") @map("ocr_status")
+  ocrData    Json?    @map("ocr_data")
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  expense    Expense? @relation(fields: [expenseId], references: [id])
+  user       User     @relation(fields: [uploadedBy], references: [id])
+
+  @@map("receipts")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  expenseId String?  @map("expense_id")
+  action    String
+  details   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  expense   Expense? @relation(fields: [expenseId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
 enum UserRole {
   EMPLOYEE
   MANAGER
@@ -27,141 +160,4 @@ enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-model User {
-  id             String    @id @default(uuid())
-  sapEmployeeId  String?   @unique @map("sap_employee_id")
-  name           String
-  email          String    @unique
-  password       String
-  department     String?
-  role           UserRole  @default(EMPLOYEE)
-  managerId      String?   @map("manager_id")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-
-  manager        User?     @relation("UserManager", fields: [managerId], references: [id])
-  subordinates   User[]    @relation("UserManager")
-  expenses       Expense[]
-  approvals      Approval[]
-  auditLogs      AuditLog[]
-  refreshTokens  RefreshToken[]
-  receipts       Receipt[]
-
-  @@map("users")
-}
-
-model Expense {
-  id                 String        @id @default(uuid())
-  userId             String        @map("user_id")
-  expenseDate        DateTime      @map("expense_date")
-  amount             Decimal       @db.Decimal(12, 2)
-  currency           String        @default("TRY")
-  taxAmount          Decimal?      @db.Decimal(12, 2) @map("tax_amount")
-  category           String
-  projectCode        String?       @map("project_code")
-  costCenter         String?       @map("cost_center")
-  description        String?
-  status             ExpenseStatus @default(DRAFT)
-  sapDocumentNumber  String?       @map("sap_document_number")
-  receiptUrl         String?       @map("receipt_url")
-  createdAt          DateTime      @default(now()) @map("created_at")
-  updatedAt          DateTime      @updatedAt @map("updated_at")
-
-  user               User              @relation(fields: [userId], references: [id])
-  approvals          Approval[]
-  auditLogs          AuditLog[]
-  sapPostingQueue    SapPostingQueue[]
-  receipts           Receipt[]
-
-  @@map("expenses")
-}
-
-model Approval {
-  id          String         @id @default(uuid())
-  expenseId   String         @map("expense_id")
-  approverId  String         @map("approver_id")
-  status      ApprovalStatus @default(PENDING)
-  comment     String?
-  actionDate  DateTime?      @map("action_date")
-  createdAt   DateTime       @default(now()) @map("created_at")
-
-  expense     Expense        @relation(fields: [expenseId], references: [id])
-  approver    User           @relation(fields: [approverId], references: [id])
-
-  @@map("approvals")
-}
-
-model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  tokenHash String   @map("token_hash")
-  expiresAt DateTime @map("expires_at")
-  revoked   Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user      User     @relation(fields: [userId], references: [id])
-
-  @@map("refresh_tokens")
-}
-
-model SapPostingQueue {
-  id         String    @id @default(uuid())
-  expenseId  String    @map("expense_id")
-  payload    Json
-  status     String    @default("PENDING")
-  attempts   Int       @default(0)
-  lastError  String?   @map("last_error")
-  nextRetry  DateTime? @map("next_retry")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-
-  expense    Expense   @relation(fields: [expenseId], references: [id])
-
-  @@map("sap_posting_queue")
-}
-
-model SapMasterData {
-  id        String   @id @default(uuid())
-  type      String
-  code      String
-  name      String
-  isActive  Boolean  @default(true) @map("is_active")
-  syncedAt  DateTime @default(now()) @map("synced_at")
-
-  @@unique([type, code])
-  @@map("sap_master_data")
-}
-
-model Receipt {
-  id         String   @id @default(uuid())
-  expenseId  String?  @map("expense_id")
-  fileName   String   @map("file_name")
-  filePath   String   @map("file_path")
-  mimeType   String   @map("mime_type")
-  fileSize   Int      @map("file_size")
-  ocrStatus  String   @default("PENDING") @map("ocr_status")
-  ocrData    Json?    @map("ocr_data")
-  uploadedBy String   @map("uploaded_by")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  expense    Expense? @relation(fields: [expenseId], references: [id])
-  user       User     @relation(fields: [uploadedBy], references: [id])
-
-  @@map("receipts")
-}
-
-model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
-  expenseId  String?  @map("expense_id")
-  action     String
-  details    String?
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  user       User     @relation(fields: [userId], references: [id])
-  expense    Expense? @relation(fields: [expenseId], references: [id])
-
-  @@map("audit_logs")
 }

@@ -38,7 +38,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     if (mounted && success) {
-      Navigator.of(context).pushReplacementNamed('/dashboard');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Registration successful. Check email and wait for admin approval.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      Navigator.of(context).pop();
     }
   }
 

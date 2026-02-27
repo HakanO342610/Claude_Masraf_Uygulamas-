@@ -82,8 +82,12 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _user = await _api.register(name, email, password);
-      _status = AuthStatus.authenticated;
+      final response = await _api.register(name, email, password);
+      
+      // Store the message or let the UI handle success
+      // We do NOT set _status = AuthStatus.authenticated
+      // We do NOT set _user
+      
       _loading = false;
       notifyListeners();
       return true;

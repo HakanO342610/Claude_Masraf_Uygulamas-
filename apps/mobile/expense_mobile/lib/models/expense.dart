@@ -89,8 +89,10 @@ class Expense {
   static const List<String> categories = [
     'Travel',
     'Accommodation',
-    'Meals',
+    'Food & Beverage',
     'Transportation',
+    'Office Supplies',
+    'Meals',
     'Office',
     'Other',
   ];

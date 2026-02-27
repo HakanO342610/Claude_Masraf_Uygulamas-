@@ -2,12 +2,14 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/login.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AuthService {
@@ -16,6 +18,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private mailService: MailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -26,6 +29,7 @@ export class AuthService {
       throw new ConflictException('Email already registered');
     }
 
+    const confirmationToken = crypto.randomBytes(32).toString('hex');
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
       data: {
@@ -33,10 +37,43 @@ export class AuthService {
         email: dto.email,
         password: hashedPassword,
         department: dto.department,
+        isApproved: false,
+        isEmailConfirmed: false,
+        confirmationToken,
       },
     });
 
-    return this.generateTokens(user.id, user.email, user.role);
+    // Send a real confirmation email
+    try {
+      await this.mailService.sendEmailConfirmation(user.email, confirmationToken);
+    } catch (err) {
+      // Log error but don't fail the registration
+    }
+
+    return { 
+      message: 'Registration successful. Please check your email to confirm and wait for admin approval.',
+      email: user.email,
+    };
+  }
+
+  async confirmEmail(token: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { confirmationToken: token }
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired confirmation token');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailConfirmed: true,
+        confirmationToken: null,
+      },
+    });
+
+    return { message: 'Email confirmed successfully. You can now login after admin approval.' };
   }
 
   async login(dto: LoginDto) {
@@ -50,6 +87,14 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isEmailConfirmed) {
+      throw new ForbiddenException('Please confirm your email address first');
+    }
+
+    if (!user.isApproved) {
+      throw new ForbiddenException('Your account is pending admin approval');
     }
 
     return this.generateTokens(user.id, user.email, user.role);

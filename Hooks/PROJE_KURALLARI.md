@@ -40,4 +40,6 @@ chmod +x Hooks/pre-commit Hooks/pre-push
 git config core.hooksPath Hooks
 ```
 
+Her projedeki güncellemeleri ve ne yaptığımızı detaylı senin hatırlaman için memory.md de tutuyoruz her çalıştığında nerde kaldığını buradan hatırla ve major düzenlemelerde bu dosyayı güncelle.
+
 **(Not: En baştan projenize bu konfigürasyonu AI Agent uyguladı, bu nedenle sizde direkt devreye girdi.)**

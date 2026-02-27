@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   Patch,
+  Delete,
   Body,
   UseGuards,
   ForbiddenException,
@@ -57,5 +58,29 @@ export class UsersController {
     @Body('managerId') managerId: string,
   ) {
     return this.usersService.assignManager(id, managerId);
+  }
+
+  @Patch(':id/approve')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Approve user account' })
+  approveUser(@Param('id') id: string) {
+    return this.usersService.approveUser(id);
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Update user info' })
+  updateUser(
+    @Param('id') id: string,
+    @Body() body: { name?: string; email?: string; department?: string },
+  ) {
+    return this.usersService.updateUser(id, body);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Delete user' })
+  deleteUser(@Param('id') id: string) {
+    return this.usersService.deleteUser(id);
   }
 }

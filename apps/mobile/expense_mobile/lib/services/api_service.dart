@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../models/expense.dart';
@@ -255,25 +257,16 @@ class ApiService {
     return user;
   }
 
-  Future<User> register(String name, String email, String password) async {
+  Future<Map<String, dynamic>> register(String name, String email, String password) async {
     final data = await _post('/auth/register', {
       'name': name,
       'email': email,
       'password': password,
     }, withAuth: false);
 
-    final token = data['accessToken'] ?? data['access_token'] ?? data['token'];
-    if (token != null) {
-      await _saveToken(token);
-    }
-
-    if (data['refreshToken'] != null) {
-      await _saveRefreshToken(data['refreshToken']);
-    }
-
-    final user = User.fromJson(data['user'] ?? data);
-    await _saveUser(user);
-    return user;
+    // Backend handles the JWT generation, BUT it's suspended until approval.
+    // It returns: { message: "...", email: "..." }
+    return data;
   }
 
   Future<void> logout() async {
@@ -283,6 +276,44 @@ class ApiService {
       // Ignore errors during logout
     }
     await clearAuth();
+  }
+
+  // ---------- User Management Endpoints (Admin) ----------
+
+  Future<List<User>> getUsers() async {
+    final data = await _get('/users');
+    if (data is List) {
+      return data.map((json) => User.fromJson(json)).toList();
+    }
+    return [];
+  }
+
+  Future<User> updateUserRole(String id, String role) async {
+    final data = await _patch('/users/$id/role', {'role': role});
+    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+  }
+
+  Future<User> assignManager(String id, String managerId) async {
+    final data = await _patch('/users/$id/manager', {'managerId': managerId});
+    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+  }
+
+  Future<User> approveUser(String id) async {
+    final data = await _patch('/users/$id/approve', {});
+    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+  }
+
+  Future<User> updateUser(String id, {String? name, String? email, String? department}) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (email != null) body['email'] = email;
+    if (department != null) body['department'] = department;
+    final data = await _patch('/users/$id', body);
+    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+  }
+
+  Future<void> deleteUser(String id) async {
+    await _delete('/users/$id');
   }
 
   // ---------- Expense Endpoints ----------
@@ -307,6 +338,25 @@ class ApiService {
     }
 
     return items.map((json) => Expense.fromJson(json)).toList();
+  }
+
+  Future<List<Expense>> getPendingApprovals() async {
+    final data = await _get('/expenses/pending-approvals');
+    List<dynamic> items;
+    if (data is List) {
+      items = data;
+    } else if (data is Map && data.containsKey('data')) {
+      items = data['data'] as List;
+    } else {
+      items = [];
+    }
+
+    return items.map((json) {
+      if (json.containsKey('expense')) {
+        return Expense.fromJson(json['expense']);
+      }
+      return Expense.fromJson(json);
+    }).toList();
   }
 
   Future<Expense> getExpense(String id) async {
@@ -409,12 +459,22 @@ class ApiService {
     return [];
   }
 
-  Future<Map<String, dynamic>> uploadReceipt(String filePath, String mimeType) async {
+  Future<Map<String, dynamic>> uploadReceipt(XFile file) async {
     await _loadToken();
     final uri = Uri.parse('$baseUrl/receipts/upload');
     final request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer $_token';
-    request.files.add(await http.MultipartFile.fromPath('file', filePath));
+    
+    final bytes = await file.readAsBytes();
+    final mimeType = file.mimeType ?? 'image/jpeg';
+    final typeData = mimeType.split('/');
+    
+    request.files.add(http.MultipartFile.fromBytes(
+      'file',
+      bytes,
+      filename: file.name,
+      contentType: MediaType(typeData[0], typeData.length > 1 ? typeData[1] : 'jpeg'),
+    ));
 
     final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamedResponse);

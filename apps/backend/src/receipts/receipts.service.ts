@@ -110,7 +110,7 @@ export class ReceiptsService {
       let extractedDate: string | null = null;
       let extractedVendor: string | null = null;
 
-      const lines = text.split('\\n').map((l) => l.trim()).filter((l) => l.length > 0);
+      const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
 
       if (lines.length > 0) {
         // Assume first line is vendor
@@ -118,7 +118,7 @@ export class ReceiptsService {
       }
 
       // Regex to find dates (dd.mm.yyyy, dd/mm/yyyy, dd-mm-yyyy)
-      const dateRegex = /\\b(\\d{2})[\\.\\/\\-](\\d{2})[\\.\\/\\-](\\d{4})\\b/;
+      const dateRegex = /\b(\d{2})[\.\/\-](\d{2})[\.\/\-](\d{4})\b/;
       for (const line of lines) {
         const dateMatch = line.match(dateRegex);
         if (dateMatch) {
@@ -141,15 +141,31 @@ export class ReceiptsService {
 
       // If amount not found using keywords, just try to find the largest currency-like number near the bottom
       if (!extractedAmount) {
-        const amountRegex = /\\b(\\d+[.,]\\d{2})\\b/;
-        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 5); i--) {
+        // Try loose amount patterns: e.g. "12 50", "12,50", "12.50", "S0" (sometimes 5 becomes S)
+        const amountRegex = /(\d+)[.,\s](\d{2})\b/;
+        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 8); i--) {
           const match = lines[i].match(amountRegex);
           if (match) {
-            extractedAmount = parseFloat(match[1].replace(',', '.'));
+            extractedAmount = parseFloat(`${match[1]}.${match[2]}`);
             break;
           }
         }
       }
+      
+      // Fallback: Just get the biggest number from the bottom 15 lines if all else fails
+      if (!extractedAmount) {
+        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 15); i--) {
+            const matches = lines[i].match(/\d+/g);
+            if(matches && matches.length > 0) {
+               const maxNum = Math.max(...matches.map(Number));
+               if (maxNum > 0) {
+                   extractedAmount = maxNum;
+                   break;
+               }
+            }
+        }
+      }
+
 
       const ocrData = {
         extractedAmount,

@@ -15,6 +15,8 @@ export class UsersService {
         department: true,
         role: true,
         sapEmployeeId: true,
+        isApproved: true,
+        isEmailConfirmed: true,
         createdAt: true,
       },
     });
@@ -31,6 +33,8 @@ export class UsersService {
         role: true,
         sapEmployeeId: true,
         managerId: true,
+        isApproved: true,
+        isEmailConfirmed: true,
         createdAt: true,
       },
     });
@@ -52,5 +56,54 @@ export class UsersService {
       data: { managerId },
       select: { id: true, name: true, managerId: true },
     });
+  }
+
+  async approveUser(id: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { isApproved: true },
+      select: { id: true, name: true, email: true, isApproved: true },
+    });
+  }
+
+  async updateUser(id: string, data: { name?: string; email?: string; department?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
+    return this.prisma.user.update({
+      where: { id },
+      data,
+      select: {
+        id: true, name: true, email: true, department: true,
+        role: true, isApproved: true, isEmailConfirmed: true,
+      },
+    });
+  }
+
+  async deleteUser(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
+    // Delete all related records in correct order (foreign key dependencies)
+    const expenses = await this.prisma.expense.findMany({ where: { userId: id }, select: { id: true } });
+    const expenseIds = expenses.map(e => e.id);
+
+    if (expenseIds.length > 0) {
+      await this.prisma.sapPostingQueue.deleteMany({ where: { expenseId: { in: expenseIds } } });
+      await this.prisma.approval.deleteMany({ where: { expenseId: { in: expenseIds } } });
+      await this.prisma.auditLog.deleteMany({ where: { expenseId: { in: expenseIds } } });
+      await this.prisma.receipt.deleteMany({ where: { expenseId: { in: expenseIds } } });
+    }
+
+    await this.prisma.receipt.deleteMany({ where: { uploadedBy: id } });
+    await this.prisma.approval.deleteMany({ where: { approverId: id } });
+    await this.prisma.auditLog.deleteMany({ where: { userId: id } });
+    await this.prisma.expense.deleteMany({ where: { userId: id } });
+    await this.prisma.refreshToken.deleteMany({ where: { userId: id } });
+
+    // Clear manager references from other users
+    await this.prisma.user.updateMany({ where: { managerId: id }, data: { managerId: null } });
+
+    return this.prisma.user.delete({ where: { id } });
   }
 }

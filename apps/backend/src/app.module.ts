@@ -12,6 +12,8 @@ import { SapIntegrationModule } from './sap-integration/sap-integration.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReceiptsModule } from './receipts/receipts.module';
 import { ReportsModule } from './reports/reports.module';
+import { HealthModule } from './health/health.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { ReportsModule } from './reports/reports.module';
     NotificationsModule,
     ReceiptsModule,
     ReportsModule,
+    HealthModule,
+    MailModule,
   ],
   providers: [
     {
