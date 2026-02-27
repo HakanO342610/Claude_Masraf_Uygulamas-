@@ -67,6 +67,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Navigator.of(context).pushNamed('/expenses');
         break;
       case 2:
+        Navigator.of(context).pushNamed('/receipts');
+        break;
+      case 3:
+        Navigator.of(context).pushNamed('/reports');
+        break;
+      case 4:
         Navigator.of(context).pushNamed('/approvals');
         break;
     }
@@ -158,6 +164,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Expenses',
           ),
           NavigationDestination(
+            icon: Icon(Icons.camera_alt_outlined),
+            selectedIcon: Icon(Icons.camera_alt),
+            label: 'Receipts',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: 'Reports',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.approval_outlined),
             selectedIcon: Icon(Icons.approval),
             label: 'Approvals',
@@ -166,7 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          final result = await Navigator.of(context).pushNamed('/expense/new');
+          final result = await Navigator.of(context).pushNamed('/expenses/new');
           if (result == true) _loadData();
         },
         icon: const Icon(Icons.add),
@@ -270,7 +286,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.euro,
+                  child: Icon(Icons.currency_lira,
                       color: Theme.of(context).colorScheme.onPrimaryContainer),
                 ),
                 const SizedBox(width: 16),
@@ -281,7 +297,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Text('Total Expenses',
                           style: Theme.of(context).textTheme.bodyMedium),
                       Text(
-                        '${_totalAmount.toStringAsFixed(2)} EUR',
+                        '${_totalAmount.toStringAsFixed(2)} TRY',
                         style:
                             Theme.of(context).textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
@@ -349,7 +365,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 expense: _recentExpenses[index],
                 onTap: () async {
                   final result = await Navigator.of(context).pushNamed(
-                    '/expense/edit',
+                    '/expenses/edit',
                     arguments: _recentExpenses[index],
                   );
                   if (result == true) _loadData();

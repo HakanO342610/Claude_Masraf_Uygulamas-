@@ -163,22 +163,30 @@ class _StatusBadge extends StatelessWidget {
     Color backgroundColor;
     Color textColor;
 
-    switch (status.toLowerCase()) {
-      case 'draft':
+    switch (status) {
+      case 'DRAFT':
         backgroundColor = Colors.grey.shade200;
         textColor = Colors.grey.shade700;
         break;
-      case 'pending':
+      case 'SUBMITTED':
         backgroundColor = Colors.orange.shade100;
         textColor = Colors.orange.shade800;
         break;
-      case 'approved':
+      case 'MANAGER_APPROVED':
+        backgroundColor = Colors.blue.shade100;
+        textColor = Colors.blue.shade800;
+        break;
+      case 'FINANCE_APPROVED':
         backgroundColor = Colors.green.shade100;
         textColor = Colors.green.shade800;
         break;
-      case 'rejected':
+      case 'REJECTED':
         backgroundColor = Colors.red.shade100;
         textColor = Colors.red.shade800;
+        break;
+      case 'POSTED_TO_SAP':
+        backgroundColor = Colors.teal.shade100;
+        textColor = Colors.teal.shade800;
         break;
       default:
         backgroundColor = Colors.grey.shade200;
@@ -192,7 +200,7 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        status[0].toUpperCase() + status.substring(1),
+        _formatStatus(status),
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
@@ -200,5 +208,24 @@ class _StatusBadge extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _formatStatus(String status) {
+    switch (status) {
+      case 'DRAFT':
+        return 'Draft';
+      case 'SUBMITTED':
+        return 'Submitted';
+      case 'MANAGER_APPROVED':
+        return 'Manager Approved';
+      case 'FINANCE_APPROVED':
+        return 'Finance Approved';
+      case 'REJECTED':
+        return 'Rejected';
+      case 'POSTED_TO_SAP':
+        return 'Posted to SAP';
+      default:
+        return status;
+    }
   }
 }

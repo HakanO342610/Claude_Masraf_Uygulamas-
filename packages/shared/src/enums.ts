@@ -1,0 +1,36 @@
+export enum UserRole {
+  EMPLOYEE = 'EMPLOYEE',
+  MANAGER = 'MANAGER',
+  FINANCE = 'FINANCE',
+  ADMIN = 'ADMIN',
+}
+
+export enum ExpenseStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  MANAGER_APPROVED = 'MANAGER_APPROVED',
+  FINANCE_APPROVED = 'FINANCE_APPROVED',
+  REJECTED = 'REJECTED',
+  POSTED_TO_SAP = 'POSTED_TO_SAP',
+}
+
+export enum ApprovalStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+
+export enum OcrStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+}
+
+export enum SapQueueStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  DEAD_LETTER = 'DEAD_LETTER',
+}

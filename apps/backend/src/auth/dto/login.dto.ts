@@ -30,3 +30,9 @@ export class RegisterDto {
   @IsString()
   department?: string;
 }
+
+export class RefreshTokenDto {
+  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIs...' })
+  @IsString()
+  refreshToken: string;
+}

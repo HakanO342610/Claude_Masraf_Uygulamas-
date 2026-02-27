@@ -1,0 +1,40 @@
+#!/bin/bash
+# Pre-push hook: GitHub'a (veya herhangi bir remote repo'ya) pushlamadan önce çalıştırılır
+echo "🚀 [Git Hook] pre-push kontrolleri başlatılıyor..."
+echo "Branch ve güncellemeler kontrol ediliyor..."
+
+# 1. Main veya master dalına doğrudan pushlamayı yasaklamak (Opsiyonel Güvenlik)
+# current_branch=$(git symbolic-ref HEAD | sed -e 's,.*/\(.*\),\1,')
+# if [ "$current_branch" == "main" ] || [ "$current_branch" == "master" ]; then
+#     echo "❌ Hata: 'main' veya 'master' dalına doğrudan push yapılamaz! PR (Pull Request) açmalısınız."
+#     exit 1
+# fi
+
+# 2. Gereksiz veya geçici dizinlerin (node_modules, build/) repo'da var olup olmadığını denetle
+unwanted_dirs=("node_modules" "dist" "build" "coverage")
+for dir in "${unwanted_dirs[@]}"; do
+    # tree üzerinde bu klasörlerden biri varsa ve git ignore tarafından yakalanmamışsa uyar
+    if git ls-files | grep -q "^$dir/"; then
+        echo "❌ Hata: '$dir/' klasörü içerisindeki dosyalar Git deposunda bulundu! Lütfen .gitignore dosyasını kontrol edin ve takip edilen (tracked) olmaktan çıkarın."
+        echo "   Çözüm komutu: git rm -r --cached $dir"
+        exit 1
+    fi
+done
+
+# 3. Son Test ve Build kontrolleri (Node.js Workspace İçin)
+if [ -f "package.json" ]; then
+    echo "📦 npm projeleri algılandı... Build testleri yürütülüyor."
+    # Buildlerin çalıştığından emin olmak için projeyi derlemeyi deneriz (varsa).
+    # npm run build:all komutu eğer hata verirse push işlemi başarısız olur
+    npm run build:all --if-present
+    if [ $? -ne 0 ]; then
+        echo "❌ Hata: Kodlarınız derleme (build) sırasında hata aldı."
+        echo "❌ Lütfen hataları düzelttikten sonra yeniden pushlayın."
+        exit 1
+    fi
+else
+    echo "⚠️ Uyarı: 'package.json' bulunamadı, build adımı atlanıyor."
+fi
+
+echo "✅ Tüm kontroller başarıyla tamamlandı. Yenilikler yükleniyor (Pushing)..."
+exit 0

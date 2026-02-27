@@ -60,6 +60,14 @@ export class ExpensesService {
       },
     });
     if (!expense) throw new NotFoundException('Expense not found');
+
+    if (expense.userId !== userId) {
+      const hasApproval = expense.approvals.some(
+        (a) => a.approverId === userId,
+      );
+      if (!hasApproval) throw new ForbiddenException('Access denied');
+    }
+
     return expense;
   }
 
@@ -152,6 +160,40 @@ export class ExpensesService {
     });
 
     await this.createAuditLog(approverId, id, 'APPROVED', comment || 'Expense approved');
+
+    // Auto-escalate to Finance after Manager approval
+    if (newStatus === ExpenseStatus.MANAGER_APPROVED) {
+      const financeUser = await this.prisma.user.findFirst({
+        where: { role: 'FINANCE' },
+      });
+
+      if (financeUser) {
+        await this.prisma.approval.create({
+          data: {
+            expenseId: id,
+            approverId: financeUser.id,
+          },
+        });
+        await this.createAuditLog(
+          approverId,
+          id,
+          'ESCALATED_TO_FINANCE',
+          `Auto-escalated to Finance user: ${financeUser.name}`,
+        );
+      } else {
+        // No Finance user exists — auto-approve as Finance
+        await this.prisma.expense.update({
+          where: { id },
+          data: { status: ExpenseStatus.FINANCE_APPROVED },
+        });
+        await this.createAuditLog(
+          approverId,
+          id,
+          'AUTO_FINANCE_APPROVED',
+          'No Finance user found, auto-approved',
+        );
+      }
+    }
 
     return updated;
   }

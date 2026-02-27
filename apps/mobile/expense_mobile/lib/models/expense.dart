@@ -34,12 +34,12 @@ class Expense {
       amount: (json['amount'] is num)
           ? (json['amount'] as num).toDouble()
           : double.tryParse(json['amount']?.toString() ?? '0') ?? 0.0,
-      currency: json['currency'] ?? 'EUR',
+      currency: json['currency'] ?? 'TRY',
       category: json['category'] ?? 'Other',
       costCenter: json['costCenter'] ?? '',
       projectCode: json['projectCode'] ?? '',
       description: json['description'] ?? '',
-      status: json['status'] ?? 'draft',
+      status: json['status'] ?? 'DRAFT',
       sapDocumentNumber: json['sapDocumentNumber'],
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
@@ -58,21 +58,29 @@ class Expense {
     };
   }
 
-  bool get isDraft => status == 'draft';
-  bool get isPending => status == 'pending';
-  bool get isApproved => status == 'approved';
-  bool get isRejected => status == 'rejected';
+  bool get isDraft => status == 'DRAFT';
+  bool get isSubmitted => status == 'SUBMITTED';
+  bool get isManagerApproved => status == 'MANAGER_APPROVED';
+  bool get isFinanceApproved => status == 'FINANCE_APPROVED';
+  bool get isRejected => status == 'REJECTED';
+  bool get isPostedToSap => status == 'POSTED_TO_SAP';
+  bool get isPending => isSubmitted || isManagerApproved;
+  bool get isApproved => isFinanceApproved || isPostedToSap;
 
   String get statusLabel {
     switch (status) {
-      case 'draft':
+      case 'DRAFT':
         return 'Draft';
-      case 'pending':
-        return 'Pending';
-      case 'approved':
-        return 'Approved';
-      case 'rejected':
+      case 'SUBMITTED':
+        return 'Submitted';
+      case 'MANAGER_APPROVED':
+        return 'Manager Approved';
+      case 'FINANCE_APPROVED':
+        return 'Finance Approved';
+      case 'REJECTED':
         return 'Rejected';
+      case 'POSTED_TO_SAP':
+        return 'Posted to SAP';
       default:
         return status;
     }
@@ -88,6 +96,7 @@ class Expense {
   ];
 
   static const List<String> currencies = [
+    'TRY',
     'EUR',
     'USD',
     'GBP',

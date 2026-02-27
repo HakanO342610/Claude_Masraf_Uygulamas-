@@ -14,7 +14,7 @@ import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
 
 interface Expense {
   id: string;
-  date: string;
+  expenseDate: string;
   amount: number;
   currency: string;
   category: string;
@@ -27,11 +27,12 @@ interface Expense {
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
-  { value: 'Draft', label: 'Draft' },
-  { value: 'Submitted', label: 'Submitted' },
-  { value: 'Approved', label: 'Approved' },
-  { value: 'Rejected', label: 'Rejected' },
-  { value: 'PostedToSAP', label: 'Posted to SAP' },
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'SUBMITTED', label: 'Submitted' },
+  { value: 'MANAGER_APPROVED', label: 'Manager Approved' },
+  { value: 'FINANCE_APPROVED', label: 'Finance Approved' },
+  { value: 'REJECTED', label: 'Rejected' },
+  { value: 'POSTED_TO_SAP', label: 'Posted to SAP' },
 ];
 
 export default function ExpensesPage() {
@@ -133,7 +134,7 @@ export default function ExpensesPage() {
                 {expenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-3.5 text-gray-900">
-                      {format(new Date(expense.date), 'dd MMM yyyy')}
+                      {format(new Date(expense.expenseDate), 'dd MMM yyyy')}
                     </td>
                     <td className="px-6 py-3.5 text-gray-600 max-w-xs truncate">
                       {expense.description || '-'}

@@ -14,7 +14,7 @@ import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
 
 interface Approval {
   id: string;
-  date: string;
+  expenseDate: string;
   amount: number;
   currency: string;
   category: string;
@@ -152,7 +152,7 @@ export default function ApprovalsPage() {
                   <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
                     <span>
                       <span className="text-gray-400">Date:</span>{' '}
-                      {format(new Date(approval.date), 'dd MMM yyyy')}
+                      {format(new Date(approval.expenseDate), 'dd MMM yyyy')}
                     </span>
                     <span>
                       <span className="text-gray-400">Amount:</span>{' '}

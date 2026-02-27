@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/expense.dart';
 import '../services/api_service.dart';
 
@@ -21,11 +22,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late TextEditingController _descriptionController;
 
   DateTime _selectedDate = DateTime.now();
-  String _selectedCurrency = 'EUR';
+  String _selectedCurrency = 'TRY';
   String _selectedCategory = 'Other';
   bool _saving = false;
   bool _isEditing = false;
   Expense? _existingExpense;
+
+  final ImagePicker _picker = ImagePicker();
+  String? _uploadedReceiptId;
+  bool _isUploading = false;
+  String? _ocrMessage;
 
   @override
   void initState() {
@@ -74,6 +80,75 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     }
   }
 
+  Future<void> _pickReceipt(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(
+      source: source,
+      maxWidth: 2000,
+      maxHeight: 2000,
+      imageQuality: 85,
+    );
+    if (image == null) return;
+
+    setState(() {
+      _isUploading = true;
+      _ocrMessage = null;
+    });
+
+    try {
+      final res = await _api.uploadReceipt(image.path, image.mimeType ?? 'image/jpeg');
+      
+      setState(() {
+        _uploadedReceiptId = res['id'];
+        
+        if (res.containsKey('ocrData') && res['ocrData'] != null) {
+          int fieldsUpdated = 0;
+          final ocr = res['ocrData'];
+          
+          if (ocr['extractedAmount'] != null) {
+            _amountController.text = ocr['extractedAmount'].toString();
+            fieldsUpdated++;
+          }
+          if (ocr['extractedDate'] != null) {
+            final parsedDate = DateTime.tryParse(ocr['extractedDate']);
+            if (parsedDate != null) {
+              _selectedDate = parsedDate;
+              fieldsUpdated++;
+            }
+          }
+          if (ocr['extractedVendor'] != null) {
+            _descriptionController.text = 'Expense at ${ocr['extractedVendor']}';
+            fieldsUpdated++;
+          }
+          
+          if (fieldsUpdated > 0) {
+            _ocrMessage = 'Auto-filled $fieldsUpdated fields from receipt!';
+          } else {
+            _ocrMessage = 'Receipt uploaded. Could not extract data automatically.';
+          }
+        } else {
+          _ocrMessage = 'Receipt uploaded successfully.';
+        }
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Receipt processing complete')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
   Map<String, dynamic> _buildExpenseData() {
     return {
       'expenseDate': _selectedDate.toIso8601String(),
@@ -111,6 +186,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
       if (submit) {
         await _api.submitExpense(expense.id);
+      }
+
+      if (_uploadedReceiptId != null) {
+        try {
+          await _api.attachReceiptToExpense(_uploadedReceiptId!, expense.id);
+        } catch (_) {
+          // ignore error if attachment fails
+        }
       }
 
       if (mounted) {
@@ -170,6 +253,62 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // OCR / Receipt Section
+            if (!isViewOnly && _existingExpense == null) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Upload Receipt',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      if (_ocrMessage != null)
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            _ocrMessage!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                      _isUploading
+                          ? const Center(child: CircularProgressIndicator())
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _pickReceipt(ImageSource.camera),
+                                    icon: const Icon(Icons.camera_alt),
+                                    label: const Text('Camera'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _pickReceipt(ImageSource.gallery),
+                                    icon: const Icon(Icons.photo_library),
+                                    label: const Text('Gallery'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // Date picker
             Card(
               child: ListTile(

@@ -29,7 +29,7 @@ class _ApprovalScreenState extends State<ApprovalScreen> {
     });
 
     try {
-      _pendingExpenses = await _api.getExpenses(status: 'pending', limit: 100);
+      _pendingExpenses = await _api.getExpenses(status: 'SUBMITTED', limit: 100);
     } on ApiException catch (e) {
       _error = e.message;
     } catch (e) {

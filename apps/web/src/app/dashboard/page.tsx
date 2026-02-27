@@ -17,7 +17,7 @@ import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
 
 interface Expense {
   id: string;
-  date: string;
+  expenseDate: string;
   amount: number;
   currency: string;
   category: string;
@@ -59,14 +59,14 @@ export default function DashboardPage() {
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const monthlyExpenses = expenses.filter((e) => {
-    const d = new Date(e.date);
+    const d = new Date(e.expenseDate);
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
   });
 
   const totalThisMonth = monthlyExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const pendingCount = expenses.filter((e) => e.status === 'Submitted').length;
-  const approvedCount = expenses.filter((e) => e.status === 'Approved' || e.status === 'PostedToSAP').length;
-  const rejectedCount = expenses.filter((e) => e.status === 'Rejected').length;
+  const pendingCount = expenses.filter((e) => e.status === 'SUBMITTED').length;
+  const approvedCount = expenses.filter((e) => e.status === 'MANAGER_APPROVED' || e.status === 'FINANCE_APPROVED' || e.status === 'POSTED_TO_SAP').length;
+  const rejectedCount = expenses.filter((e) => e.status === 'REJECTED').length;
 
   const summaryCards: SummaryCard[] = [
     {
@@ -100,7 +100,7 @@ export default function DashboardPage() {
   ];
 
   const recentExpenses = [...expenses]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .sort((a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime())
     .slice(0, 10);
 
   return (
@@ -181,7 +181,7 @@ export default function DashboardPage() {
                 {recentExpenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-3.5 text-gray-900">
-                      {format(new Date(expense.date), 'dd MMM yyyy')}
+                      {format(new Date(expense.expenseDate), 'dd MMM yyyy')}
                     </td>
                     <td className="px-6 py-3.5 font-medium text-gray-900">
                       {new Intl.NumberFormat('tr-TR', {

@@ -46,6 +46,8 @@ model User {
   expenses       Expense[]
   approvals      Approval[]
   auditLogs      AuditLog[]
+  refreshTokens  RefreshToken[]
+  receipts       Receipt[]
 
   @@map("users")
 }
@@ -67,9 +69,11 @@ model Expense {
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  user               User          @relation(fields: [userId], references: [id])
+  user               User              @relation(fields: [userId], references: [id])
   approvals          Approval[]
   auditLogs          AuditLog[]
+  sapPostingQueue    SapPostingQueue[]
+  receipts           Receipt[]
 
   @@map("expenses")
 }
@@ -87,6 +91,65 @@ model Approval {
   approver    User           @relation(fields: [approverId], references: [id])
 
   @@map("approvals")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+model SapPostingQueue {
+  id         String    @id @default(uuid())
+  expenseId  String    @map("expense_id")
+  payload    Json
+  status     String    @default("PENDING")
+  attempts   Int       @default(0)
+  lastError  String?   @map("last_error")
+  nextRetry  DateTime? @map("next_retry")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  expense    Expense   @relation(fields: [expenseId], references: [id])
+
+  @@map("sap_posting_queue")
+}
+
+model SapMasterData {
+  id        String   @id @default(uuid())
+  type      String
+  code      String
+  name      String
+  isActive  Boolean  @default(true) @map("is_active")
+  syncedAt  DateTime @default(now()) @map("synced_at")
+
+  @@unique([type, code])
+  @@map("sap_master_data")
+}
+
+model Receipt {
+  id         String   @id @default(uuid())
+  expenseId  String?  @map("expense_id")
+  fileName   String   @map("file_name")
+  filePath   String   @map("file_path")
+  mimeType   String   @map("mime_type")
+  fileSize   Int      @map("file_size")
+  ocrStatus  String   @default("PENDING") @map("ocr_status")
+  ocrData    Json?    @map("ocr_data")
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  expense    Expense? @relation(fields: [expenseId], references: [id])
+  user       User     @relation(fields: [uploadedBy], references: [id])
+
+  @@map("receipts")
 }
 
 model AuditLog {

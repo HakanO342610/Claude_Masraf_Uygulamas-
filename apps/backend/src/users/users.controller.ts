@@ -5,11 +5,13 @@ import {
   Patch,
   Body,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UsersService } from './users.service';
 import { UserRole } from '@prisma/client';
 
@@ -29,7 +31,14 @@ export class UsersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get user by ID' })
-  findById(@Param('id') id: string) {
+  findById(
+    @Param('id') id: string,
+    @CurrentUser('id') currentUserId: string,
+    @CurrentUser('role') currentRole: string,
+  ) {
+    if (id !== currentUserId && !['ADMIN', 'MANAGER'].includes(currentRole)) {
+      throw new ForbiddenException('Access denied');
+    }
     return this.usersService.findById(id);
   }
 

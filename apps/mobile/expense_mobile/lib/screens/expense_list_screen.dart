@@ -19,10 +19,12 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
 
   final Map<String, String> _filters = {
     'all': 'All',
-    'draft': 'Draft',
-    'pending': 'Pending',
-    'approved': 'Approved',
-    'rejected': 'Rejected',
+    'DRAFT': 'Draft',
+    'SUBMITTED': 'Submitted',
+    'MANAGER_APPROVED': 'Manager Approved',
+    'FINANCE_APPROVED': 'Finance Approved',
+    'REJECTED': 'Rejected',
+    'POSTED_TO_SAP': 'Posted to SAP',
   };
 
   @override
@@ -98,7 +100,7 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final result = await Navigator.of(context).pushNamed('/expense/new');
+          final result = await Navigator.of(context).pushNamed('/expenses/new');
           if (result == true) _loadExpenses();
         },
         child: const Icon(Icons.add),
@@ -168,7 +170,7 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
             expense: _expenses[index],
             onTap: () async {
               final result = await Navigator.of(context).pushNamed(
-                '/expense/edit',
+                '/expenses/edit',
                 arguments: _expenses[index],
               );
               if (result == true) _loadExpenses();

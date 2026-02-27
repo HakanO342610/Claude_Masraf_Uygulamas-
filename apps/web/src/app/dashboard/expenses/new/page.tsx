@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Save, Send, ArrowLeft, Loader2 } from 'lucide-react';
+import { Save, Send, ArrowLeft, Loader2, Upload, FileText, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
-import { expenseApi } from '@/lib/api';
+import { expenseApi, receiptsApi } from '@/lib/api';
 
 const CATEGORIES = [
   'Travel',
@@ -21,7 +21,7 @@ const CATEGORIES = [
 const CURRENCIES = ['TRY', 'USD', 'EUR', 'GBP'] as const;
 
 const expenseSchema = z.object({
-  date: z.string().min(1, 'Date is required'),
+  expenseDate: z.string().min(1, 'Date is required'),
   amount: z.coerce.number().positive('Amount must be greater than zero'),
   currency: z.string().min(1, 'Currency is required'),
   category: z.string().min(1, 'Category is required'),
@@ -38,23 +38,80 @@ export default function NewExpensePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // OCR additions
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedReceiptId, setUploadedReceiptId] = useState<string | null>(null);
+  const [ocrMessage, setOcrMessage] = useState<string | null>(null);
+
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
       currency: 'TRY',
-      date: new Date().toISOString().split('T')[0],
+      expenseDate: new Date().toISOString().split('T')[0],
     },
   });
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setError(null);
+    setOcrMessage(null);
+
+    try {
+      const res = await receiptsApi.upload(file);
+      const data = res.data;
+      setUploadedReceiptId(data.id);
+      
+      if (data.ocrData) {
+        let msg = 'Receipt uploaded.';
+        let fieldsUpdated = 0;
+        
+        if (data.ocrData.extractedAmount) {
+          setValue('amount', data.ocrData.extractedAmount);
+          fieldsUpdated++;
+        }
+        if (data.ocrData.extractedDate) {
+          setValue('expenseDate', data.ocrData.extractedDate);
+          fieldsUpdated++;
+        }
+        if (data.ocrData.extractedVendor) {
+          setValue('description', `Expense at ${data.ocrData.extractedVendor}`);
+          fieldsUpdated++;
+        }
+        
+        if (fieldsUpdated > 0) {
+          setOcrMessage(`${msg} Auto-filled ${fieldsUpdated} fields using OCR.`);
+        } else {
+          setOcrMessage(`${msg} Could not extract data automatically.`);
+        }
+      } else {
+        setOcrMessage('Receipt uploaded successfully.');
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Upload failed');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const saveAsDraft = async (data: ExpenseFormData) => {
     setError(null);
     setIsSaving(true);
     try {
-      await expenseApi.create({ ...data, status: 'Draft' });
+      const response = await expenseApi.create(data);
+      const expenseId = response.data?.id || response.data?.data?.id;
+      if (expenseId && uploadedReceiptId) {
+        await receiptsApi.attachToExpense(uploadedReceiptId, expenseId);
+      }
       router.push('/dashboard/expenses');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to save expense');
@@ -68,8 +125,11 @@ export default function NewExpensePage() {
     setIsSubmitting(true);
     try {
       const response = await expenseApi.create(data);
-      const expenseId = response.data.id || response.data.data?.id;
+      const expenseId = response.data?.id || response.data?.data?.id;
       if (expenseId) {
+        if (uploadedReceiptId) {
+          await receiptsApi.attachToExpense(uploadedReceiptId, expenseId);
+        }
         await expenseApi.submit(expenseId);
       }
       router.push('/dashboard/expenses');
@@ -106,8 +166,49 @@ export default function NewExpensePage() {
       )}
 
       <form className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-5">
+        
+        {/* Receipt Upload logic */}
+        <div className="rounded-lg flex flex-col items-center justify-center p-6 border-2 border-dashed border-indigo-100 bg-indigo-50/30 hover:bg-indigo-50/50 transition-colors">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            onChange={handleUpload}
+            className="hidden"
+          />
+          <div className="text-center">
+            {isUploading ? (
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-500" />
+            ) : uploadedReceiptId ? (
+              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+            ) : (
+              <Upload className="mx-auto h-8 w-8 text-indigo-400" />
+            )}
+            
+            <div className="mt-4 flex text-sm text-gray-600 justify-center">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="relative cursor-pointer rounded-md bg-transparent font-medium text-indigo-600 focus-within:outline-none hover:text-indigo-500"
+              >
+                <span>{uploadedReceiptId ? 'Upload a different receipt' : 'Upload receipt for auto-fill'}</span>
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Our AI will extract the date, amount, and merchant name.
+            </p>
+          </div>
+          {ocrMessage && (
+            <div className="mt-5 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-full inline-flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              {ocrMessage}
+            </div>
+          )}
+        </div>
+
         {/* Date and Amount row */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 mt-2">
           <div>
             <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1.5">
               Date
@@ -115,11 +216,11 @@ export default function NewExpensePage() {
             <input
               id="date"
               type="date"
-              {...register('date')}
+              {...register('expenseDate')}
               className="block w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 sm:text-sm"
             />
-            {errors.date && (
-              <p className="mt-1.5 text-sm text-red-600">{errors.date.message}</p>
+            {errors.expenseDate && (
+              <p className="mt-1.5 text-sm text-red-600">{errors.expenseDate.message}</p>
             )}
           </div>
 

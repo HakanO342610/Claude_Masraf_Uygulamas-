@@ -1,0 +1,38 @@
+#!/bin/bash
+# Pre-commit hook: Commit öncesi hızlı kontrolleri yapar
+echo "🔄 [Git Hook] pre-commit kontrolleri başlatılıyor..."
+
+# 1. Dosya boyutu kontrolü (Örn: 5MB'dan büyük dosyalar commitlenemez)
+max_size=5242880 # 5MB in bytes
+files=$(git diff --cached --name-only --diff-filter=A | while read filename; do
+    if [ -f "$filename" ]; then
+        size=$(stat -f %z "$filename" 2>/dev/null || stat -c %s "$filename" 2>/dev/null)
+        if [ "$size" -gt $max_size ]; then
+            echo "❌ Hata: '$filename' dosyası 5MB'dan büyük ($size bytes). Push öncesi temizleyin!"
+            exit 1
+        fi
+    fi
+done)
+
+if [ $? -ne 0 ]; then
+    echo "$files"
+    echo "❌ Lütfen büyük dosyaları '.gitignore' dosyasına ekleyin."
+    exit 1
+fi
+
+# 2. .env dosyalarının veya şifrelerin yanlışlıkla commitlenmesini önleme
+matches=$(git diff --cached --name-only | grep -E '\.env|password|secret|key')
+if [ ! -z "$matches" ]; then
+    echo "⚠️ Uyarı: Şifre veya gizli anahtar (API Key, .env) barındırabilecek dosyalar ekliyor olabilirsiniz:"
+    echo "$matches"
+    echo "Eğer eminseniz commitinize devam edebilirsiniz ama lütfen kontrol edin."
+fi
+
+# 3. Basit söz dizimi kontrolleri (opsiyonel)
+# Örneğin js dosyaları için basit syntax check:
+# for file in $(git diff --name-only --cached | grep '\.js$'); do
+#    node -c "$file" || exit 1
+# done
+
+echo "✅ pre-commit kontrolleri başarıyla tamamlandı."
+exit 0
