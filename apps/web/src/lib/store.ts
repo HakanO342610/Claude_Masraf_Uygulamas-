@@ -1,5 +1,29 @@
 import { create } from 'zustand';
 
+
+// ---------- i18n Store ----------
+import { type Locale, getTranslations } from './i18n';
+
+interface I18nState {
+  locale: Locale;
+  t: ReturnType<typeof getTranslations>;
+  setLocale: (locale: Locale) => void;
+}
+
+export const useI18nStore = create<I18nState>((set) => {
+  const stored = (typeof window !== 'undefined' ? localStorage.getItem('locale') : null) as Locale | null;
+  const locale: Locale = stored === 'en' ? 'en' : 'tr';
+  return {
+    locale,
+    t: getTranslations(locale),
+    setLocale: (locale: Locale) => {
+      if (typeof window !== 'undefined') localStorage.setItem('locale', locale);
+      set({ locale, t: getTranslations(locale) });
+    },
+  };
+});
+
+// ---------- Auth Store ----------
 interface AuthState {
   user: { id: string; email: string; role: string } | null;
   token: string | null;

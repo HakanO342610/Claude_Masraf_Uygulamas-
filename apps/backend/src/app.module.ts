@@ -14,6 +14,8 @@ import { ReceiptsModule } from './receipts/receipts.module';
 import { ReportsModule } from './reports/reports.module';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
+import { PushModule } from './push/push.module';
+import { PolicyModule } from './policy/policy.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { MailModule } from './mail/mail.module';
     ReportsModule,
     HealthModule,
     MailModule,
+    PushModule,
+    PolicyModule,
   ],
   providers: [
     {

@@ -9,6 +9,7 @@ class Expense {
   final String description;
   final String status;
   final String? sapDocumentNumber;
+  final double? taxAmount; // Added KDV
   final String? createdAt;
   final String? updatedAt;
 
@@ -23,6 +24,7 @@ class Expense {
     required this.description,
     required this.status,
     this.sapDocumentNumber,
+    this.taxAmount,
     this.createdAt,
     this.updatedAt,
   });
@@ -41,6 +43,9 @@ class Expense {
       description: json['description'] ?? '',
       status: json['status'] ?? 'DRAFT',
       sapDocumentNumber: json['sapDocumentNumber'],
+      taxAmount: (json['taxAmount'] is num)
+          ? (json['taxAmount'] as num).toDouble()
+          : double.tryParse(json['taxAmount']?.toString() ?? '0'),
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
     );
@@ -55,6 +60,7 @@ class Expense {
       'costCenter': costCenter,
       'projectCode': projectCode,
       'description': description,
+      if (taxAmount != null) 'taxAmount': taxAmount,
     };
   }
 

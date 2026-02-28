@@ -5,18 +5,46 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
+import { PolicyService } from '../policy/policy.service';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/create-expense.dto';
 import { ExpenseStatus } from '@prisma/client';
 
 @Injectable()
 export class ExpensesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private push: PushService,
+    private policy: PolicyService,
+  ) {}
 
   async create(userId: string, dto: CreateExpenseDto) {
+    // --- Mükerrer giriş kontrolü ---
+    const expenseDate = new Date(dto.expenseDate);
+    const startOfDay = new Date(expenseDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(expenseDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const duplicate = await this.prisma.expense.findFirst({
+      where: {
+        userId,
+        amount: dto.amount,
+        description: dto.description,
+        expenseDate: { gte: startOfDay, lte: endOfDay },
+      },
+    });
+
+    if (duplicate) {
+      throw new BadRequestException(
+        'Bu tarih, tutar ve açıklama ile zaten bir masraf kaydı mevcut. Mükerrer giriş yapılamaz.',
+      );
+    }
+
     return this.prisma.expense.create({
       data: {
         userId,
-        expenseDate: new Date(dto.expenseDate),
+        expenseDate,
         amount: dto.amount,
         currency: dto.currency || 'TRY',
         taxAmount: dto.taxAmount,
@@ -75,13 +103,18 @@ export class ExpensesService {
     const expense = await this.prisma.expense.findUnique({ where: { id } });
     if (!expense) throw new NotFoundException('Expense not found');
     if (expense.userId !== userId) throw new ForbiddenException();
-    if (expense.status === ExpenseStatus.FINANCE_APPROVED || expense.status === ExpenseStatus.POSTED_TO_SAP) {
-      throw new BadRequestException('Approved expenses cannot be edited');
+    if (expense.status !== ExpenseStatus.DRAFT) {
+      throw new BadRequestException('Sadece taslak (Draft) durumundaki masraflar düzenlenebilir.');
+    }
+
+    const updateData: any = { ...dto };
+    if (updateData.expenseDate) {
+      updateData.expenseDate = new Date(updateData.expenseDate);
     }
 
     return this.prisma.expense.update({
       where: { id },
-      data: dto,
+      data: updateData,
     });
   }
 
@@ -89,9 +122,13 @@ export class ExpensesService {
     const expense = await this.prisma.expense.findUnique({ where: { id } });
     if (!expense) throw new NotFoundException('Expense not found');
     if (expense.userId !== userId) throw new ForbiddenException();
-    if (expense.status === ExpenseStatus.FINANCE_APPROVED || expense.status === ExpenseStatus.POSTED_TO_SAP) {
-      throw new BadRequestException('Approved expenses cannot be deleted');
+    if (expense.status !== ExpenseStatus.DRAFT) {
+      throw new BadRequestException('Sadece taslak (Draft) durumundaki masraflar silinebilir.');
     }
+
+    // Önce ilişkili kayıtları sil (approvals, audit logs)
+    await this.prisma.approval.deleteMany({ where: { expenseId: id } });
+    await this.prisma.auditLog.deleteMany({ where: { expenseId: id } });
 
     return this.prisma.expense.delete({ where: { id } });
   }
@@ -106,9 +143,11 @@ export class ExpensesService {
 
     if (expense.status === ExpenseStatus.SUBMITTED || expense.status === ExpenseStatus.MANAGER_APPROVED) {
       // Zaten onaya gönderilmişse tekrar onay akışı başlatmaya gerek yok.
-      // Düzenleme işlemi (update) yeterli.
       return expense;
     }
+
+    // Policy check — ihlal varsa BadRequestException fırlatır
+    await this.policy.checkExpense(id);
 
     // Find manager
     const user = await this.prisma.user.findUnique({
@@ -167,6 +206,20 @@ export class ExpensesService {
 
     await this.createAuditLog(approverId, id, 'APPROVED', comment || 'Expense approved');
 
+    // Push notification to expense owner
+    const owner = await this.prisma.user.findUnique({
+      where: { id: updated.userId },
+      select: { fcmToken: true } as any,
+    });
+    if ((owner as any)?.fcmToken) {
+      await this.push.sendToToken(
+        (owner as any).fcmToken,
+        'Masrafınız Onaylandı',
+        `Masrafınız onaylandı${comment ? ': ' + comment : '.'}`,
+        { expenseId: id },
+      );
+    }
+
     // Auto-escalate to Finance after Manager approval
     if (newStatus === ExpenseStatus.MANAGER_APPROVED) {
       const financeUser = await this.prisma.user.findFirst({
@@ -221,6 +274,19 @@ export class ExpensesService {
     });
 
     await this.createAuditLog(approverId, id, 'REJECTED', comment);
+
+    const owner = await this.prisma.user.findUnique({
+      where: { id: updated.userId },
+      select: { fcmToken: true } as any,
+    });
+    if ((owner as any)?.fcmToken) {
+      await this.push.sendToToken(
+        (owner as any).fcmToken,
+        'Masrafınız Reddedildi',
+        `Masrafınız reddedildi: ${comment}`,
+        { expenseId: id },
+      );
+    }
 
     return updated;
   }

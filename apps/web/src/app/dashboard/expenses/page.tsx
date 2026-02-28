@@ -11,6 +11,8 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { expenseApi } from '@/lib/api';
 import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
@@ -19,6 +21,7 @@ interface Expense {
   id: string;
   expenseDate: string;
   amount: number;
+  taxAmount?: number;
   currency: string;
   category: string;
   status: string;
@@ -46,6 +49,8 @@ export default function ExpensesPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const pageSize = 10;
 
   const totalPages = Math.ceil(expenses.length / pageSize);
@@ -71,6 +76,21 @@ export default function ExpensesPage() {
       setError(err.response?.data?.message || 'Failed to load expenses');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await expenseApi.delete(deleteTarget);
+      setExpenses((prev) => prev.filter((e) => e.id !== deleteTarget));
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Delete failed';
+      alert(msg);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
@@ -170,10 +190,12 @@ export default function ExpensesPage() {
                   <th className="px-6 py-3 font-medium text-gray-500">Date</th>
                   <th className="px-6 py-3 font-medium text-gray-500">Description</th>
                   <th className="px-6 py-3 font-medium text-gray-500">Amount</th>
+                  <th className="px-6 py-3 font-medium text-gray-500">KDV</th>
                   <th className="px-6 py-3 font-medium text-gray-500">Category</th>
                   <th className="px-6 py-3 font-medium text-gray-500">Cost Center</th>
                   <th className="px-6 py-3 font-medium text-gray-500">Status</th>
                   <th className="px-6 py-3 font-medium text-gray-500">SAP Doc</th>
+                  <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -189,7 +211,15 @@ export default function ExpensesPage() {
                       {new Intl.NumberFormat('tr-TR', {
                         style: 'currency',
                         currency: expense.currency || 'TRY',
-                      }).format(expense.amount)}
+                      }).format(Number(expense.amount))}
+                    </td>
+                    <td className="px-6 py-3.5 text-gray-500 text-xs">
+                      {expense.taxAmount != null && Number(expense.taxAmount) > 0
+                        ? new Intl.NumberFormat('tr-TR', {
+                            style: 'currency',
+                            currency: expense.currency || 'TRY',
+                          }).format(Number(expense.taxAmount))
+                        : '-'}
                     </td>
                     <td className="px-6 py-3.5 text-gray-600">{expense.category}</td>
                     <td className="px-6 py-3.5 text-gray-500">{expense.costCenter || '-'}</td>
@@ -198,6 +228,26 @@ export default function ExpensesPage() {
                     </td>
                     <td className="px-6 py-3.5 text-gray-500">
                       {expense.sapDocumentNumber || '-'}
+                    </td>
+                    <td className="px-6 py-3.5">
+                      {expense.status === 'DRAFT' && (
+                        <div className="flex items-center gap-1">
+                          <Link
+                            href={`/dashboard/expenses/${expense.id}`}
+                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </Link>
+                          <button
+                            onClick={() => setDeleteTarget(expense.id)}
+                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -241,6 +291,39 @@ export default function ExpensesPage() {
             >
               <ChevronRight className="h-4 w-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                <Trash2 className="h-5 w-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Delete Expense</h3>
+            </div>
+            <p className="mb-6 text-sm text-gray-600">
+              Are you sure you want to delete this expense? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

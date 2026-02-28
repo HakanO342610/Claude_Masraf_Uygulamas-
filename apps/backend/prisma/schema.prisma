@@ -21,6 +21,7 @@ model User {
   confirmationToken String?        @map("confirmation_token")
   isApproved        Boolean        @default(false) @map("is_approved")
   isEmailConfirmed  Boolean        @default(false) @map("is_email_confirmed")
+  fcmToken          String?        @map("fcm_token")
   approvals         Approval[]
   auditLogs         AuditLog[]
   expenses          Expense[]
@@ -125,6 +126,19 @@ model Receipt {
   user       User     @relation(fields: [uploadedBy], references: [id])
 
   @@map("receipts")
+}
+
+model PolicyRule {
+  id                  String   @id @default(uuid())
+  name                String
+  category            String?
+  monthlyLimit        Decimal  @map("monthly_limit") @db.Decimal(12, 2)
+  requireReceiptAbove Decimal? @map("require_receipt_above") @db.Decimal(12, 2)
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("policy_rules")
 }
 
 model AuditLog {

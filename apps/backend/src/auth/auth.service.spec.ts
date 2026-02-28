@@ -4,13 +4,16 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 
 jest.mock('bcrypt');
 
 const mockPrisma = {
   user: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
   },
   refreshToken: {
     findFirst: jest.fn(),
@@ -24,6 +27,11 @@ const mockJwtService = {
   sign: jest.fn().mockReturnValue('mock-jwt-token'),
 };
 
+const mockMailService = {
+  sendEmailConfirmation: jest.fn().mockResolvedValue(undefined),
+  sendApprovalNotification: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('AuthService', () => {
   let service: AuthService;
 
@@ -33,6 +41,7 @@ describe('AuthService', () => {
         AuthService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: JwtService, useValue: mockJwtService },
+        { provide: MailService, useValue: mockMailService },
       ],
     }).compile();
 

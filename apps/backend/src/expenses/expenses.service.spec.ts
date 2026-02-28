@@ -2,14 +2,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { ExpensesService } from './expenses.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
+import { PolicyService } from '../policy/policy.service';
 
 const mockPrisma = {
   expense: {
     create: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
+    aggregate: jest.fn(),
   },
   user: {
     findUnique: jest.fn(),
@@ -20,10 +24,24 @@ const mockPrisma = {
     create: jest.fn(),
     update: jest.fn(),
     findMany: jest.fn(),
+    deleteMany: jest.fn(),
   },
   auditLog: {
     create: jest.fn(),
+    deleteMany: jest.fn(),
   },
+  policyRule: {
+    findMany: jest.fn().mockResolvedValue([]), // no rules by default
+  },
+};
+
+const mockPushService = {
+  sendToToken: jest.fn().mockResolvedValue(undefined),
+  sendToTokens: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockPolicyService = {
+  checkExpense: jest.fn().mockResolvedValue(undefined), // pass by default
 };
 
 describe('ExpensesService', () => {
@@ -34,6 +52,8 @@ describe('ExpensesService', () => {
       providers: [
         ExpensesService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: PushService, useValue: mockPushService },
+        { provide: PolicyService, useValue: mockPolicyService },
       ],
     }).compile();
 
@@ -50,6 +70,7 @@ describe('ExpensesService', () => {
         description: 'Business trip',
       };
       const expected = { id: '1', userId: 'user1', ...dto, status: 'DRAFT' };
+      mockPrisma.expense.findFirst.mockResolvedValue(null); // no duplicate
       mockPrisma.expense.create.mockResolvedValue(expected);
 
       const result = await service.create('user1', dto);
@@ -177,16 +198,30 @@ describe('ExpensesService', () => {
       const result = await service.submit('1', 'user1');
 
       expect(result.status).toBe('SUBMITTED');
+      expect(mockPolicyService.checkExpense).toHaveBeenCalledWith('1');
       expect(mockPrisma.approval.create).toHaveBeenCalledWith({
         data: { expenseId: '1', approverId: 'manager1' },
       });
     });
 
-    it('should reject submit for non-draft expense', async () => {
+    it('should reject submit if policy is violated', async () => {
       mockPrisma.expense.findUnique.mockResolvedValue({
         id: '1',
         userId: 'user1',
-        status: 'SUBMITTED',
+        status: 'DRAFT',
+      });
+      mockPolicyService.checkExpense.mockRejectedValueOnce(
+        new BadRequestException('Politika ihlali'),
+      );
+
+      await expect(service.submit('1', 'user1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject submit for already approved expense', async () => {
+      mockPrisma.expense.findUnique.mockResolvedValue({
+        id: '1',
+        userId: 'user1',
+        status: 'FINANCE_APPROVED',
       });
 
       await expect(service.submit('1', 'user1')).rejects.toThrow(
@@ -203,10 +238,10 @@ describe('ExpensesService', () => {
         approverId: 'manager1',
         status: 'PENDING',
       });
-      mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'manager1',
-        role: 'MANAGER',
-      });
+      // findUnique called twice: 1st for approver role, 2nd for owner fcmToken push
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({ id: 'manager1', role: 'MANAGER' })
+        .mockResolvedValueOnce({ fcmToken: null }); // owner has no FCM token
       mockPrisma.user.findFirst.mockResolvedValue({
         id: 'finance1',
         name: 'Finance User',
@@ -214,6 +249,7 @@ describe('ExpensesService', () => {
       mockPrisma.approval.update.mockResolvedValue({});
       mockPrisma.expense.update.mockResolvedValue({
         id: '1',
+        userId: 'user1',
         status: 'MANAGER_APPROVED',
       });
       mockPrisma.approval.create.mockResolvedValue({});
@@ -245,8 +281,10 @@ describe('ExpensesService', () => {
       mockPrisma.approval.update.mockResolvedValue({});
       mockPrisma.expense.update.mockResolvedValue({
         id: '1',
+        userId: 'user1',
         status: 'REJECTED',
       });
+      mockPrisma.user.findUnique.mockResolvedValue({ fcmToken: null });
       mockPrisma.auditLog.create.mockResolvedValue({});
 
       const result = await service.reject('1', 'manager1', 'Missing receipt');

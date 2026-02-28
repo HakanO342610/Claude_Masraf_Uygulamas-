@@ -17,6 +17,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   final ApiService _api = ApiService();
 
   late TextEditingController _amountController;
+  late TextEditingController _taxAmountController;
   late TextEditingController _costCenterController;
   late TextEditingController _projectCodeController;
   late TextEditingController _descriptionController;
@@ -39,6 +40,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   void initState() {
     super.initState();
     _amountController = TextEditingController();
+    _taxAmountController = TextEditingController();
     _costCenterController = TextEditingController();
     _projectCodeController = TextEditingController();
     _descriptionController = TextEditingController();
@@ -54,6 +56,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       _existingExpense = args;
       _selectedDate = args.expenseDate;
       _amountController.text = args.amount.toStringAsFixed(2);
+      if (args.taxAmount != null && args.taxAmount! > 0) {
+        _taxAmountController.text = args.taxAmount!.toStringAsFixed(2);
+      }
       _selectedCurrency = args.currency;
       _selectedCategory = args.category;
       _costCenterController.text = args.costCenter;
@@ -69,6 +74,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   @override
   void dispose() {
     _amountController.dispose();
+    _taxAmountController.dispose();
     _costCenterController.dispose();
     _projectCodeController.dispose();
     _descriptionController.dispose();
@@ -115,6 +121,10 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             _amountController.text = ocr['extractedAmount'].toString();
             fieldsUpdated++;
           }
+          if (ocr['extractedTaxAmount'] != null) {
+            _taxAmountController.text = ocr['extractedTaxAmount'].toString();
+            fieldsUpdated++;
+          }
           if (ocr['extractedDate'] != null) {
             final parsedDate = DateTime.tryParse(ocr['extractedDate']);
             if (parsedDate != null) {
@@ -124,6 +134,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           }
           if (ocr['extractedVendor'] != null) {
             _descriptionController.text = 'Expense at ${ocr['extractedVendor']}';
+            fieldsUpdated++;
+          }
+          if (ocr['extractedCategory'] != null && _availableCategories.contains(ocr['extractedCategory'])) {
+            _selectedCategory = ocr['extractedCategory'];
+            fieldsUpdated++;
+          }
+          if (ocr['currency'] != null && Expense.currencies.contains(ocr['currency'])) {
+            _selectedCurrency = ocr['currency'];
             fieldsUpdated++;
           }
           
@@ -160,6 +178,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     return {
       'expenseDate': _selectedDate.toIso8601String(),
       'amount': double.parse(_amountController.text),
+      if (_taxAmountController.text.isNotEmpty) 'taxAmount': double.parse(_taxAmountController.text),
       'currency': _selectedCurrency,
       'category': _selectedCategory,
       'costCenter': _costCenterController.text.trim(),
@@ -365,6 +384,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
+                  flex: 1,
                   child: DropdownButtonFormField<String>(
                     value: _selectedCurrency,
                     decoration: const InputDecoration(
@@ -389,32 +409,66 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Category dropdown
-            DropdownButtonFormField<String>(
-              value: _selectedCategory,
-              decoration: const InputDecoration(
-                labelText: 'Category',
-                prefixIcon: Icon(Icons.category_outlined),
-              ),
-              items: _availableCategories.map((category) {
-                return DropdownMenuItem(
-                  value: category,
-                  child: Text(category),
-                );
-              }).toList(),
-              onChanged: isViewOnly
-                  ? null
-                  : (value) {
-                      if (value != null) {
-                        setState(() => _selectedCategory = value);
+            // KDV and Category
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: TextFormField(
+                    controller: _taxAmountController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d+\.?\d{0,2}')),
+                    ],
+                    readOnly: isViewOnly,
+                    decoration: const InputDecoration(
+                      labelText: 'KDV (VAT)',
+                      hintText: '0.00',
+                    ),
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty) {
+                        if (double.tryParse(value) == null) {
+                          return 'Invalid';
+                        }
                       }
+                      return null;
                     },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select a category';
-                }
-                return null;
-              },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedCategory,
+                    decoration: const InputDecoration(
+                      labelText: 'Category',
+                      prefixIcon: Icon(Icons.category_outlined),
+                    ),
+                    items: _availableCategories.map((category) {
+                      return DropdownMenuItem(
+                        value: category,
+                        child: Text(category),
+                      );
+                    }).toList(),
+                    onChanged: isViewOnly
+                        ? null
+                        : (value) {
+                            if (value != null) {
+                              setState(() => _selectedCategory = value);
+                            }
+                          },
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please select a category';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 

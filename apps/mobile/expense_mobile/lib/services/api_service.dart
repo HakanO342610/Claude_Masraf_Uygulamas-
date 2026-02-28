@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../models/expense.dart';
 import '../config/app_config.dart';
+import 'local_storage_service.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -318,7 +320,26 @@ class ApiService {
 
   // ---------- Expense Endpoints ----------
 
+  Future<bool> _isOnline() async {
+    final result = await Connectivity().checkConnectivity();
+    return result.any((r) => r != ConnectivityResult.none);
+  }
+
   Future<List<Expense>> getExpenses({String? status, int page = 1, int limit = 20}) async {
+    final online = await _isOnline();
+    final cache = LocalStorageService();
+
+    if (!online) {
+      final cached = cache.getCachedExpenses();
+      if (cached.isNotEmpty) {
+        if (status != null && status.isNotEmpty) {
+          return cached.where((e) => e.status == status).toList();
+        }
+        return cached;
+      }
+      throw ApiException('No internet connection and no cached data available.');
+    }
+
     String path = '/expenses?page=$page&limit=$limit';
     if (status != null && status.isNotEmpty) {
       path += '&status=$status';
@@ -337,7 +358,17 @@ class ApiService {
       items = [];
     }
 
-    return items.map((json) => Expense.fromJson(json)).toList();
+    final expenses = items.map((json) => Expense.fromJson(json)).toList();
+
+    if (status == null || status.isEmpty) {
+      try {
+        await cache.cacheExpenses(expenses);
+      } catch (_) {
+        // Cache update failure is non-fatal
+      }
+    }
+
+    return expenses;
   }
 
   Future<List<Expense>> getPendingApprovals() async {
@@ -487,5 +518,9 @@ class ApiService {
 
   Future<void> attachReceiptToExpense(String receiptId, String expenseId) async {
     await _patch('/receipts/$receiptId/attach-to-expense/$expenseId', {});
+  }
+
+  Future<void> updateFcmToken(String fcmToken) async {
+    await _patch('/users/me/fcm-token', {'fcmToken': fcmToken});
   }
 }

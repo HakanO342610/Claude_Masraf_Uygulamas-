@@ -76,6 +76,16 @@ class ExpenseCard extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                             ),
                       ),
+                      if (expense.taxAmount != null && expense.taxAmount! > 0)
+                        Text(
+                          'KDV: ${expense.taxAmount!.toStringAsFixed(2)}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                                fontSize: 11,
+                              ),
+                        ),
                       const SizedBox(height: 4),
                       _StatusBadge(status: expense.status),
                     ],

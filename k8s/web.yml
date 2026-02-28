@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: expense-web:latest
+          image: DOCKER_HUB_USERNAME/expense-web:latest
           ports:
             - containerPort: 3000
           env:

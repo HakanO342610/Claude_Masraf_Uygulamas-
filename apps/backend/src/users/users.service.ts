@@ -80,6 +80,14 @@ export class UsersService {
     });
   }
 
+  async updateFcmToken(userId: string, fcmToken: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { fcmToken },
+      select: { id: true },
+    });
+  }
+
   async deleteUser(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
@@ -105,5 +113,31 @@ export class UsersService {
     await this.prisma.user.updateMany({ where: { managerId: id }, data: { managerId: null } });
 
     return this.prisma.user.delete({ where: { id } });
+  }
+
+  async findAuditLogs(query: { page?: number; limit?: number; userId?: string; action?: string }) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (query.userId) where.userId = query.userId;
+    if (query.action) where.action = { contains: query.action, mode: 'insensitive' };
+
+    const [data, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          expense: { select: { id: true, category: true, amount: true, currency: true } },
+        },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 }

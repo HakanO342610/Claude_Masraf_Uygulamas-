@@ -60,4 +60,11 @@ export class SapIntegrationController {
   syncMasterData() {
     return this.masterDataService.syncAll();
   }
+
+  @Get('test-connection')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Test SAP connectivity and credentials — returns connected:true/false' })
+  testConnection() {
+    return this.sapService.testConnection();
+  }
 }

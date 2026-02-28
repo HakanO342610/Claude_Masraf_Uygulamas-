@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import '../models/expense.dart';
 import '../services/api_service.dart';
@@ -16,6 +17,7 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
   bool _loading = true;
   String? _error;
   String _selectedFilter = 'all';
+  bool _isOffline = false;
 
   final Map<String, String> _filters = {
     'all': 'All',
@@ -38,6 +40,10 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
       _loading = true;
       _error = null;
     });
+
+    final connectivity = await Connectivity().checkConnectivity();
+    final offline = !connectivity.any((r) => r != ConnectivityResult.none);
+    setState(() => _isOffline = offline);
 
     try {
       final status = _selectedFilter == 'all' ? null : _selectedFilter;
@@ -82,6 +88,29 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
               }).toList(),
             ),
           ),
+
+          // Offline banner
+          if (_isOffline)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.shade100,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.wifi_off, size: 16, color: Colors.orange.shade800),
+                  const SizedBox(width: 8),
+                  Text(
+                    'You are offline. Showing cached data.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade900,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           const Divider(height: 1),
 
           // Expense list

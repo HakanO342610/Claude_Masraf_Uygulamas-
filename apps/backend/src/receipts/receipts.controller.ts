@@ -26,11 +26,11 @@ const storage = diskStorage({
 });
 
 const fileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
-  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
   if (allowed.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Only JPEG, PNG, WebP and PDF files are allowed'), false);
+    cb(new Error('Only JPEG, JPG, PNG, WebP and PDF files are allowed'), false);
   }
 };
 
@@ -72,7 +72,11 @@ export class ReceiptsController {
 
   @Get('expense/:expenseId')
   @ApiOperation({ summary: 'Get receipts for an expense' })
-  getByExpense(@Param('expenseId') expenseId: string) {
-    return this.receiptsService.getByExpense(expenseId);
+  getByExpense(
+    @Param('expenseId') expenseId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: string,
+  ) {
+    return this.receiptsService.getByExpense(expenseId, userId, userRole);
   }
 }

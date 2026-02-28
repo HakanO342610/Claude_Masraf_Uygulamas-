@@ -5,6 +5,11 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  if (!process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
 
   // Security headers

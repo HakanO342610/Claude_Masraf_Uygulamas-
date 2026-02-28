@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Body,
+  Query,
   UseGuards,
   ForbiddenException,
 } from '@nestjs/common';
@@ -82,5 +83,31 @@ export class UsersController {
   @ApiOperation({ summary: 'Delete user' })
   deleteUser(@Param('id') id: string) {
     return this.usersService.deleteUser(id);
+  }
+
+  @Patch('me/fcm-token')
+  @ApiOperation({ summary: 'Register FCM push token for current user' })
+  updateFcmToken(
+    @CurrentUser('id') userId: string,
+    @Body('fcmToken') fcmToken: string,
+  ) {
+    return this.usersService.updateFcmToken(userId, fcmToken);
+  }
+
+  @Get('admin/audit-logs')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'List audit logs (admin only)' })
+  findAuditLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('userId') userId?: string,
+    @Query('action') action?: string,
+  ) {
+    return this.usersService.findAuditLogs({
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+      userId,
+      action,
+    });
   }
 }

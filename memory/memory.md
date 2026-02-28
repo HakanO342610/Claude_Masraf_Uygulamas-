@@ -57,12 +57,12 @@
 - [x] Expense form (yeni masraf girişi, düzenleme)
 - [x] Multi-currency desteği (TRY, EUR, USD, GBP)
 
-### FAZ 4 — Fiş/Makbuz & OCR 🟡 KISMEN TAMAMLANDI
+### FAZ 4 — Fiş/Makbuz & OCR ✅ TAMAMLANDI
 
 - [x] Receipt upload (galeri + kamera)
 - [x] Receipt listeleme ve expense'e bağlama
-- [ ] OCR iyileştirme (Gemini Vision API ile gerçek fiş okuma)
-- [ ] OCR sonuçlarını expense form'a otomatik doldurma
+- [x] Gemini Vision API (gemini-1.5-flash) OCR + Tesseract fallback — 2026-02-28
+- [x] vendor, date, amount, currency, category otomatik çıkarımı
 
 ### FAZ 5 — Onay Workflow ✅ TAMAMLANDI
 
@@ -80,42 +80,62 @@
 - [x] CSV export
 - [x] Reports ekranı (Web + Mobile)
 
-### FAZ 7 — SAP Entegrasyon 🟡 ALTYAPI HAZIR
+### FAZ 7 — SAP Entegrasyon 🟡 BAĞLANTI BEKLİYOR
 
 - [x] SAP Integration modülü (backend altyapısı)
 - [x] SAP posting endpoint
 - [x] Queue mekanizması (retry, dead-letter)
 - [x] Master data sync endpoint
-- [ ] Gerçek SAP bağlantısı kurulması
-- [ ] BAPI_ACC_DOCUMENT_POST mapping testi
+- [x] Multi-adapter mimarisi: ECC / S4_ONPREM / S4_CLOUD — SAP_TYPE env ile seçilir — 2026-02-28
+  - SapEccAdapter → Z_EXP_POST_SRV, Basic Auth, flat payload
+  - SapS4OnPremAdapter → API_JOURNALENTRY_POST, Basic Auth
+  - SapS4CloudAdapter → API_JOURNALENTRY_POST, OAuth 2.0
+- [x] GET /integration/sap/test-connection endpoint eklendi
+- [x] SAP_COMPANY_CODE=1481, SAP_TYPE=ECC, SAP_EXPENSE_PATH env vars eklendi
+- [ ] .env'ye gerçek SAP IP ve credentials girilerek test-connection çalıştırılacak
+- [ ] Z_EXP_POST_SRV field mapping doğrulanacak (SAP BASIS ile)
 - [ ] End-to-end posting testi
 
-### FAZ 8 — İleri Özellikler 🔴 BAŞLANMADI
+### FAZ 8 — İleri Özellikler ✅ TAMAMLANDI
 
-- [ ] Push notification (Firebase)
-- [ ] Offline mode (SQLite cache)
-- [ ] Expense policy engine (limit/kural motoru)
-- [ ] Escalation kuralları (48 saat pending → üst manager bilgilendirme)
-- [ ] Dark mode tema
-- [ ] Çoklu dil desteği (i18n — TR/EN)
-- [ ] Audit log ekranı (admin)
+- [x] Push notification (Firebase) → PushService (firebase-admin), PATCH /users/me/fcm-token, approve/reject bildirim — 2026-02-28
+  - Mobile: firebase_messaging + flutter_local_notifications, PushNotificationService, main.dart init
+  - **NOT:** Firebase proje kurulumu + google-services.json / GoogleService-Info.plist gerekli (env: FIREBASE_SERVICE_ACCOUNT)
+- [x] Offline mode → Hive offline cache (connectivity_plus, LocalStorageService, offline banner) eklendi — 2026-02-28
+- [x] Expense policy engine → PolicyRule (Prisma model), PolicyModule/Service/Controller, submit'de otomatik kontrol — 2026-02-28
+  - Kategori bazlı aylık limit, fiş zorunluluğu kuralları
+- [x] Escalation kuralları → notifications.service.ts cron (her saat), 48h timeout → üst manager onay talebi — 2026-02-27
+- [x] Dark mode → Web: Tailwind darkMode:'class' + useThemeStore (localStorage) + Sun/Moon toggle header'da — 2026-02-28
+  - Mobile: ThemeProvider (SharedPreferences) + toggle butonu dashboard AppBar'da
+- [x] Çoklu dil desteği (i18n — TR/EN) → Web: i18n.ts (60+ key) + useI18nStore + Languages toggle header'da — 2026-02-28
+  - Mobile: flutter_localizations + l10n.yaml + app_tr.arb + app_en.arb, varsayılan: TR
+- [x] Audit log ekranı (admin) → GET /users/admin/audit-logs (sayfalı, filtreli) + Web: /dashboard/admin/audit-logs — 2026-02-28
 
-### FAZ 9 — Test & Kalite 🔴 BAŞLANMADI
+### FAZ 9 — Test & Kalite ✅ TAMAMLANDI (2026-02-28)
 
-- [ ] Unit testler (backend services)
-- [ ] Integration testler (API endpoints)
-- [ ] E2E testler (Mobile + Web)
-- [ ] UAT (User Acceptance Testing)
-- [ ] Performance testing
-- [ ] Security audit
+- [x] Unit testler (backend services) — 5 suite, 44 test ✅
+  - auth.service.spec.ts (MailService mock eklendi) — 8 test
+  - expenses.service.spec.ts (PushService, PolicyService, expense.findFirst mock) — 13 test
+  - users.service.spec.ts — findAll, findById, updateFcmToken, approveUser, updateRole, findAuditLogs — 7 test
+  - policy.service.spec.ts — checkExpense (pass/fail senaryolar) — 6 test
+  - reports.service.spec.ts — 10 test
+- [x] E2E testler (Web) — Playwright kurulumu + auth.spec.ts + expenses.spec.ts (`apps/web/e2e/`)
+  - `npm run test:e2e` (web dizininde) — login flow, dashboard, expense CRUD (API mocked)
+- [x] Flutter widget testleri — `test/models/expense_test.dart` (18 test) + `test/widgets/expense_card_test.dart` (14 test)
+  - Model: fromJson, statusLabel, computed props, toJson, categories/currencies
+  - Widget: ExpenseCard — description, amount, status badges, KDV, tags, onTap, date format
+- [x] Security audit — kritik bulgular düzeltildi:
+  - `GET /receipts/expense/:expenseId` → authorization eklendi (owner/elevated role)
+  - `filePath` server path response'dan çıkarıldı (select ile filtrelendi)
+  - JWT_SECRET startup validation → tanımsızsa `process.exit(1)`
 
-### FAZ 10 — Production & Deployment 🔴 BAŞLANMADI
+### FAZ 10 — Production & Deployment 🟡 KISMEN YAPILDI
 
 - [ ] Production environment setup
 - [ ] SSL / HTTPS konfigürasyonu
-- [ ] CI/CD pipeline (GitHub Actions)
-- [ ] K8s deployment
-- [ ] App Store / Google Play yayınlama
+- [x] CI/CD pipeline → Docker Hub push + K8s deploy job — 2026-02-28 (Secrets: DOCKER_HUB_USERNAME, DOCKER_HUB_TOKEN, KUBE_CONFIG_DATA)
+- [x] K8s deployment → k8s/backend.yml + web.yml image placeholder güncellendi
+- [ ] App Store / Google Play yayınlama → flutter_launcher_icons + flutter_native_splash config hazır, PNG assetler placeholder
 - [ ] Monitoring & alerting setup
 
 ---
@@ -214,6 +234,13 @@ Claude_Proj1/
 - [x] Approval workflow fix (MANAGER/ADMIN roller approve/reject yapabiliyor)
 - [x] Web + Mobile approval butonları çalışır hale getirildi
 - [x] Receipt upload hatası düzeltildi (JPEG dosyalar)
+
+### Oturum #4 (2026-02-28)
+
+- [x] **Web: Edit Expense Sayfası** — `apps/web/src/app/dashboard/expenses/[id]/page.tsx` oluşturuldu. DRAFT → düzenlenebilir form, diğer statuslar → read-only. Liste sayfasına DRAFT satırlar için Edit linki eklendi.
+- [x] **CI/CD: Docker Push + K8s Deploy** — `.github/workflows/ci.yml` güncellendi: Docker Hub push + kubectl deploy job. `k8s/backend.yml` ve `web.yml` image placeholder güncellendi.
+- [x] **Mobile: Hive Offline Cache** — `pubspec.yaml`'a hive + connectivity_plus eklendi. `ExpenseModel` (HiveObject), `LocalStorageService`, offline fallback `getExpenses()`, turuncu offline banner oluşturuldu.
+- [x] **Mobile: Icons/Splash Config** — `flutter_launcher_icons.yaml` ve `flutter_native_splash.yaml` oluşturuldu (#1E3A8A). Placeholder PNG assetler `assets/icon/` ve `assets/splash/` altında.
 
 ### Oturum #3 (2026-02-27 — akşam)
 

@@ -14,11 +14,14 @@ import {
 } from 'lucide-react';
 import { expenseApi } from '@/lib/api';
 import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
+import { calculateCurrencyTotals, formatCurrency } from '@/lib/currency';
+import { useI18nStore } from '@/lib/store';
 
 interface Expense {
   id: string;
   expenseDate: string;
   amount: number;
+  taxAmount?: number;
   currency: string;
   category: string;
   status: string;
@@ -32,9 +35,11 @@ interface SummaryCard {
   icon: React.ElementType;
   color: string;
   bgColor: string;
+  customRender?: React.ReactNode;
 }
 
 export default function DashboardPage() {
+  const { t, locale } = useI18nStore();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,35 +68,70 @@ export default function DashboardPage() {
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
   });
 
-  const totalThisMonth = monthlyExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const { byCurrency: monthlyByCurrency, grandTotalInTRY } = calculateCurrencyTotals(monthlyExpenses);
+  const hasMultipleCurrencies = monthlyByCurrency.length > 1;
   const pendingCount = expenses.filter((e) => e.status === 'SUBMITTED').length;
   const approvedCount = expenses.filter((e) => e.status === 'MANAGER_APPROVED' || e.status === 'FINANCE_APPROVED' || e.status === 'POSTED_TO_SAP').length;
   const rejectedCount = expenses.filter((e) => e.status === 'REJECTED').length;
 
+  const totalThisMonthRender = (
+    <div>
+      {monthlyByCurrency.length === 0 ? (
+        <span className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(0)}</span>
+      ) : (
+        <>
+          <div className="space-y-1">
+            {monthlyByCurrency.map((c) => (
+              <div key={c.currency} className="flex items-center gap-1.5">
+                <span className="text-xs">{c.flag}</span>
+                <span className="text-lg font-bold text-gray-900 dark:text-white">
+                  {formatCurrency(c.total, c.currency)}
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">({c.count})</span>
+              </div>
+            ))}
+          </div>
+          {hasMultipleCurrencies && (
+            <div className="mt-2 border-t border-gray-100 pt-2">
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-400">≈</span>
+                <span className="text-sm font-semibold text-emerald-600">
+                  {formatCurrency(grandTotalInTRY, 'TRY')}
+                </span>
+              </div>
+              <span className="text-[10px] text-gray-400">{locale === 'en' ? 'Approx. TRY equivalent' : 'Yaklaşık TRY karşılığı'}</span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
   const summaryCards: SummaryCard[] = [
     {
-      title: 'Total This Month',
-      value: new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(totalThisMonth),
+      title: t.totalExpenses,
+      value: '',
       icon: DollarSign,
       color: 'text-emerald-600',
       bgColor: 'bg-emerald-50',
+      customRender: totalThisMonthRender,
     },
     {
-      title: 'Pending',
+      title: t.pendingApprovals,
       value: pendingCount,
       icon: Clock,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
     },
     {
-      title: 'Approved',
+      title: t.approvedExpenses,
       value: approvedCount,
       icon: CheckCircle,
       color: 'text-green-600',
       bgColor: 'bg-green-50',
     },
     {
-      title: 'Rejected',
+      title: t.rejectedExpenses,
       value: rejectedCount,
       icon: XCircle,
       color: 'text-red-600',
@@ -108,15 +148,15 @@ export default function DashboardPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-          <p className="mt-1 text-sm text-gray-500">Overview of your expense reports</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{t.dashboard}</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Overview of your expense reports</p>
         </div>
         <Link
           href="/dashboard/expenses/new"
           className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
         >
           <Plus className="h-4 w-4" />
-          New Expense
+          {t.newExpense}
         </Link>
       </div>
 
@@ -125,23 +165,27 @@ export default function DashboardPage() {
         {summaryCards.map((card) => (
           <div
             key={card.title}
-            className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+            className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-5 shadow-sm"
           >
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-gray-500">{card.title}</p>
-              <div className={`rounded-lg p-2 ${card.bgColor}`}>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{card.title}</p>
+              <div className={`rounded-lg p-2 ${card.bgColor.replace('bg-', 'dark:bg-opacity-20 bg-')}`}>
                 <card.icon className={`h-5 w-5 ${card.color}`} />
               </div>
             </div>
-            <p className="mt-2 text-2xl font-bold text-gray-900">{card.value}</p>
+            {card.customRender ? (
+              <div className="mt-2">{card.customRender}</div>
+            ) : (
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{card.value}</p>
+            )}
           </div>
         ))}
       </div>
 
       {/* Recent expenses table */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">Recent Expenses</h3>
+      <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 shadow-sm">
+        <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{t.recentExpenses}</h3>
         </div>
 
         {isLoading ? (
@@ -169,31 +213,40 @@ export default function DashboardPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th className="px-6 py-3 font-medium text-gray-500">Date</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Amount</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Category</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Status</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">SAP Doc</th>
+                <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.date}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.amount}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">KDV</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.category}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.status}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">SAP Doc</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {recentExpenses.map((expense) => (
-                  <tr key={expense.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-3.5 text-gray-900">
+                  <tr key={expense.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <td className="px-6 py-3.5 text-gray-900 dark:text-white">
                       {format(new Date(expense.expenseDate), 'dd MMM yyyy')}
                     </td>
-                    <td className="px-6 py-3.5 font-medium text-gray-900">
+                    <td className="px-6 py-3.5 font-medium text-gray-900 dark:text-white">
                       {new Intl.NumberFormat('tr-TR', {
                         style: 'currency',
                         currency: expense.currency || 'TRY',
-                      }).format(expense.amount)}
+                      }).format(Number(expense.amount))}
                     </td>
-                    <td className="px-6 py-3.5 text-gray-600">{expense.category}</td>
+                    <td className="px-6 py-3.5 text-gray-500 dark:text-gray-400 text-xs">
+                      {expense.taxAmount != null && Number(expense.taxAmount) > 0
+                        ? new Intl.NumberFormat('tr-TR', {
+                            style: 'currency',
+                            currency: expense.currency || 'TRY',
+                          }).format(Number(expense.taxAmount))
+                        : '-'}
+                    </td>
+                    <td className="px-6 py-3.5 text-gray-600 dark:text-gray-300">{expense.category}</td>
                     <td className="px-6 py-3.5">
                       <ExpenseStatusBadge status={expense.status} />
                     </td>
-                    <td className="px-6 py-3.5 text-gray-500">
+                    <td className="px-6 py-3.5 text-gray-500 dark:text-gray-400">
                       {expense.sapDocumentNumber || '-'}
                     </td>
                   </tr>

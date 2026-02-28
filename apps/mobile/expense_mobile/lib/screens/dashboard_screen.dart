@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/expense.dart';
+import '../providers/locale_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/expense_card.dart';
 import '../widgets/summary_card.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -87,11 +90,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
     final user = authService.user;
+    final themeProvider = context.watch<ThemeProvider>();
+    final localeProvider = context.watch<LocaleProvider>();
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: Text(l10n?.dashboard ?? 'Dashboard'),
         actions: [
+          // Dil toggle
+          TextButton(
+            onPressed: () => localeProvider.toggle(),
+            style: TextButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.language, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  localeProvider.isTurkish ? 'TR' : 'EN',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          // Dark mode toggle
+          IconButton(
+            icon: Icon(themeProvider.themeMode == ThemeMode.dark
+                ? Icons.light_mode
+                : Icons.dark_mode),
+            tooltip: themeProvider.themeMode == ThemeMode.dark ? (l10n?.lightMode ?? 'Açık Mod') : (l10n?.darkMode ?? 'Koyu Mod'),
+            onPressed: () => themeProvider.toggle(),
+          ),
           PopupMenuButton<String>(
             icon: CircleAvatar(
               radius: 16,
@@ -112,6 +146,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (mounted) {
                   Navigator.of(context).pushReplacementNamed('/login');
                 }
+              } else if (value == 'theme') {
+                themeProvider.toggle();
+              } else if (value == 'language') {
+                localeProvider.toggle();
               }
             },
             itemBuilder: (context) => [
@@ -128,13 +166,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
+                value: 'language',
+                child: Row(
+                  children: [
+                    const Icon(Icons.language, size: 20),
+                    const SizedBox(width: 8),
+                    Text(l10n?.language ?? 'Language'),
+                    const Spacer(),
+                    Text(localeProvider.isTurkish ? 'TR' : 'EN', 
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'theme',
+                child: Row(
+                  children: [
+                    Icon(themeProvider.themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode, size: 20),
+                    const SizedBox(width: 8),
+                    Text(themeProvider.themeMode == ThemeMode.dark ? (l10n?.lightMode ?? 'Açık Mod') : (l10n?.darkMode ?? 'Koyu Mod')),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, size: 20),
-                    SizedBox(width: 8),
-                    Text('Sign Out'),
+                    const Icon(Icons.logout, size: 20),
+                    const SizedBox(width: 8),
+                    Text(l10n?.logout ?? 'Sign Out'),
                   ],
                 ),
               ),
@@ -158,38 +220,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _onTabTapped(index, user?.canApprove ?? false);
         },
         destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
+          NavigationDestination(
+            icon: const Icon(Icons.dashboard_outlined),
+            selectedIcon: const Icon(Icons.dashboard),
+            label: l10n?.dashboard ?? 'Dashboard',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Expenses',
+          NavigationDestination(
+            icon: const Icon(Icons.receipt_long_outlined),
+            selectedIcon: const Icon(Icons.receipt_long),
+            label: l10n?.expenses ?? 'Expenses',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.camera_alt_outlined),
-            selectedIcon: Icon(Icons.camera_alt),
-            label: 'Receipts',
+          NavigationDestination(
+            icon: const Icon(Icons.camera_alt_outlined),
+            selectedIcon: const Icon(Icons.camera_alt),
+            label: l10n?.receipts ?? 'Receipts',
           ),
           if (user?.canApprove == true)
-            const NavigationDestination(
-              icon: Icon(Icons.bar_chart_outlined),
-              selectedIcon: Icon(Icons.bar_chart),
-              label: 'Reports',
+            NavigationDestination(
+              icon: const Icon(Icons.bar_chart_outlined),
+              selectedIcon: const Icon(Icons.bar_chart),
+              label: l10n?.reports ?? 'Reports',
             ),
           if (user?.canApprove == true)
-            const NavigationDestination(
-              icon: Icon(Icons.approval_outlined),
-              selectedIcon: Icon(Icons.approval),
-              label: 'Approvals',
+            NavigationDestination(
+              icon: const Icon(Icons.approval_outlined),
+              selectedIcon: const Icon(Icons.approval),
+              label: l10n?.approvals ?? 'Approvals',
             ),
           if (user?.isAdmin == true)
-            const NavigationDestination(
-              icon: Icon(Icons.people_outline),
-              selectedIcon: Icon(Icons.people),
-              label: 'Users',
+            NavigationDestination(
+              icon: const Icon(Icons.people_outline),
+              selectedIcon: const Icon(Icons.people),
+              label: l10n?.users ?? 'Users',
             ),
         ],
       ),
@@ -199,7 +261,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (result == true) _loadData();
         },
         icon: const Icon(Icons.add),
-        label: const Text('New Expense'),
+        label: Text(l10n?.newExpense ?? 'New Expense'),
       ),
     );
   }
@@ -261,25 +323,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
           childAspectRatio: 1.6,
           children: [
             SummaryCard(
-              title: 'Total',
+              title: l10n?.totalExpenses ?? 'Total',
               value: _totalCount.toString(),
               icon: Icons.receipt_long,
               color: Theme.of(context).colorScheme.primary,
             ),
             SummaryCard(
-              title: 'Pending',
+              title: l10n?.pendingApprovals ?? 'Pending',
               value: _pendingCount.toString(),
               icon: Icons.hourglass_empty,
               color: Colors.orange,
             ),
             SummaryCard(
-              title: 'Approved',
+              title: l10n?.approved ?? 'Approved',
               value: _approvedCount.toString(),
               icon: Icons.check_circle_outline,
               color: Colors.green,
             ),
             SummaryCard(
-              title: 'Rejected',
+              title: l10n?.rejected ?? 'Rejected',
               value: _rejectedCount.toString(),
               icon: Icons.cancel_outlined,
               color: Colors.red,
