@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { usersApi } from '@/lib/api';
+import { useI18nStore } from '@/lib/store';
 
 interface User {
   id: string;
@@ -22,6 +23,17 @@ interface User {
 }
 
 const ROLES = ['EMPLOYEE', 'MANAGER', 'FINANCE', 'ADMIN'];
+const DEPARTMENTS = [
+  'IT',
+  'HR',
+  'Finance',
+  'Engineering',
+  'Sales',
+  'Marketing',
+  'Operations',
+  'Legal',
+  'Management',
+];
 
 const roleBadgeStyles: Record<string, string> = {
   ADMIN: 'bg-red-50 text-red-700',
@@ -31,6 +43,9 @@ const roleBadgeStyles: Record<string, string> = {
 };
 
 export default function AdminPage() {
+  const t = useI18nStore((state) => state.t);
+  const locale = useI18nStore((state) => state.locale);
+
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +63,7 @@ export default function AdminPage() {
       const res = await usersApi.getAll();
       setUsers(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load users');
+      setError(err.response?.data?.message || t.failedLoadUsers);
     } finally {
       setIsLoading(false);
     }
@@ -66,11 +81,25 @@ export default function AdminPage() {
 
   const saveEdit = async (id: string) => {
     try {
-      await usersApi.updateRole(id, editRole);
+      const user = users.find((u) => u.id === id);
+      const promises = [];
+
+      if (user?.role !== editRole) {
+        promises.push(usersApi.updateRole(id, editRole));
+      }
+
+      if (user?.department !== editDept) {
+        promises.push(usersApi.updateUser(id, { department: editDept }));
+      }
+
+      if (promises.length > 0) {
+        await Promise.all(promises);
+      }
+
       setEditingId(null);
       await fetchUsers();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to update user');
+      setError(err.response?.data?.message || t.failedUpdateUser);
     }
   };
 
@@ -78,7 +107,7 @@ export default function AdminPage() {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-        <span className="ml-2 text-sm text-gray-500">Loading users...</span>
+        <span className="ml-2 text-sm text-gray-500">{t.loadingUsers}</span>
       </div>
     );
   }
@@ -86,9 +115,9 @@ export default function AdminPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{t.userManagement}</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Manage users, roles, and departments
+          {t.manageUsersDesc}
         </p>
       </div>
 
@@ -108,7 +137,7 @@ export default function AdminPage() {
               className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
             >
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-500">{role}</span>
+                <span className="text-sm font-medium text-gray-500">{t[`role_${role}` as keyof typeof t] || role}</span>
                 <Users className="h-4 w-4 text-gray-400" />
               </div>
               <p className="mt-1 text-2xl font-bold text-gray-900">{count}</p>
@@ -121,12 +150,12 @@ export default function AdminPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Name</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Email</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Department</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Role</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Joined</th>
-              <th className="px-6 py-3 text-right font-medium text-gray-500">Actions</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">{t.name}</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">{t.email}</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">{t.department}</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">{t.role}</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">{t.joined}</th>
+              <th className="px-6 py-3 text-right font-medium text-gray-500">{t.actions}</th>
             </tr>
           </thead>
           <tbody>
@@ -136,15 +165,29 @@ export default function AdminPage() {
                 <td className="px-6 py-4 text-gray-500">{user.email}</td>
                 <td className="px-6 py-4">
                   {editingId === user.id ? (
-                    <input
-                      type="text"
-                      value={editDept}
-                      onChange={(e) => setEditDept(e.target.value)}
-                      className="w-28 rounded border border-gray-300 px-2 py-1 text-xs"
-                      placeholder="Department"
-                    />
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={editDept}
+                        onChange={(e) => setEditDept(e.target.value)}
+                        className="w-28 rounded border border-gray-300 px-2 py-1 text-xs"
+                      >
+                        <option value="">- Seçiniz -</option>
+                        {DEPARTMENTS.map((dept) => {
+                          const translationKey = `dept_${dept.replace(/[&\s]/g, '_')}`;
+                          return (
+                            <option key={dept} value={dept}>
+                              {t[translationKey as keyof typeof t] || dept}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
                   ) : (
-                    <span className="text-gray-600">{user.department || '-'}</span>
+                    <span className="text-gray-600">
+                      {user.department 
+                        ? (t[`dept_${user.department.replace(/[&\s]/g, '_')}` as keyof typeof t] || user.department)
+                        : '-'}
+                    </span>
                   )}
                 </td>
                 <td className="px-6 py-4">
@@ -155,7 +198,7 @@ export default function AdminPage() {
                       className="rounded border border-gray-300 px-2 py-1 text-xs"
                     >
                       {ROLES.map((r) => (
-                        <option key={r} value={r}>{r}</option>
+                        <option key={r} value={r}>{t[`role_${r}` as keyof typeof t] || r}</option>
                       ))}
                     </select>
                   ) : (
@@ -163,12 +206,12 @@ export default function AdminPage() {
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeStyles[user.role] || 'bg-gray-100 text-gray-700'}`}
                     >
                       <Shield className="h-3 w-3" />
-                      {user.role}
+                      {t[`role_${user.role}` as keyof typeof t] || user.role}
                     </span>
                   )}
                 </td>
                 <td className="px-6 py-4 text-gray-500">
-                  {new Date(user.createdAt).toLocaleDateString('tr-TR')}
+                  {new Date(user.createdAt).toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US')}
                 </td>
                 <td className="px-6 py-4 text-right">
                   {editingId === user.id ? (

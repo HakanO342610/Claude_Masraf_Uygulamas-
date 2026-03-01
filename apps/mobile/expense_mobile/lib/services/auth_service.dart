@@ -76,13 +76,13 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<bool> register(String name, String email, String password) async {
+  Future<bool> register(String name, String email, String password, {String? department}) async {
     _loading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final response = await _api.register(name, email, password);
+      final response = await _api.register(name, email, password, department: department);
       
       // Store the message or let the UI handle success
       // We do NOT set _status = AuthStatus.authenticated

@@ -1,6 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
+
+  String _translateRole(BuildContext context, String role) {
+    bool isTr = Localizations.localeOf(context).languageCode.contains('tr');
+    if (!isTr) return role;
+    switch (role) {
+      case 'MANAGER': return 'Yönetici';
+      case 'FINANCE': return 'Finans';
+      case 'EMPLOYEE': return 'Çalışan';
+      case 'ADMIN': return 'Admin';
+      default: return role;
+    }
+  }
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -22,41 +35,35 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   Future<void> _loadUsers() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
+    setState(() { _loading = true; _error = null; });
     try {
       final users = await _api.getUsers();
-      setState(() {
-        _users = users;
-        _loading = false;
-      });
+      setState(() { _users = users; _loading = false; });
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
-  // ─── Approve ─────────────────────────────────────────────
   Future<void> _approveUser(String id) async {
     try {
       await _api.approveUser(id);
-      _showSnack('User approved');
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
+        _showSnack(l10n?.userApproved ?? 'User approved');
+      }
       _loadUsers();
     } catch (e) {
       _showSnack('Failed: $e', isError: true);
     }
   }
 
-  // ─── Role Change ─────────────────────────────────────────
   Future<void> _updateRole(String id, String newRole) async {
     try {
       await _api.updateUserRole(id, newRole);
-      _showSnack('Role updated');
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
+        _showSnack(l10n?.roleUpdated ?? 'Role updated');
+      }
       _loadUsers();
     } catch (e) {
       _showSnack('Failed: $e', isError: true);
@@ -64,18 +71,17 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   void _showRoleDialog(User user) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Role: ${user.name}'),
+        title: Text('${l10n?.role ?? 'Role'}: ${user.name}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: ['ADMIN', 'MANAGER', 'FINANCE', 'EMPLOYEE']
               .map((role) => ListTile(
-                    title: Text(role),
-                    trailing: user.role == role
-                        ? const Icon(Icons.check, color: Colors.green)
-                        : null,
+                    title: Text(_translateRole(ctx, role)),
+                    trailing: user.role == role ? const Icon(Icons.check, color: Colors.green) : null,
                     onTap: () {
                       Navigator.of(ctx).pop();
                       if (user.role != role) _updateRole(user.id, role);
@@ -87,13 +93,13 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
-  // ─── Manager Assignment ──────────────────────────────────
   void _showManagerDialog(User user) {
+    final l10n = AppLocalizations.of(context);
     final managers = _users.where((u) => u.id != user.id).toList();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Manager: ${user.name}'),
+        title: Text('${l10n?.manager ?? 'Manager'}: ${user.name}'),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView(
@@ -101,12 +107,12 @@ class _UsersScreenState extends State<UsersScreen> {
             children: managers
                 .map((m) => ListTile(
                       title: Text(m.name),
-                      subtitle: Text(m.role),
+                      subtitle: Text(_translateRole(ctx, m.role)),
                       onTap: () async {
                         Navigator.of(ctx).pop();
                         try {
                           await _api.assignManager(user.id, m.id);
-                          _showSnack('Manager assigned: ${m.name}');
+                          if (mounted) _showSnack('Manager assigned: ${m.name}');
                           _loadUsers();
                         } catch (e) {
                           _showSnack('Failed: $e', isError: true);
@@ -120,8 +126,8 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
-  // ─── Edit User Info ──────────────────────────────────────
   void _showEditDialog(User user) {
+    final l10n = AppLocalizations.of(context);
     final nameCtrl = TextEditingController(text: user.name);
     final emailCtrl = TextEditingController(text: user.email);
     final deptCtrl = TextEditingController();
@@ -129,30 +135,21 @@ class _UsersScreenState extends State<UsersScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit User'),
+        title: Text(l10n?.editUser ?? 'Edit User'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
+            TextField(controller: nameCtrl, decoration: InputDecoration(labelText: l10n?.name ?? 'Name')),
             const SizedBox(height: 12),
-            TextField(
-              controller: emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
+            TextField(controller: emailCtrl, decoration: InputDecoration(labelText: l10n?.email ?? 'Email')),
             const SizedBox(height: 12),
-            TextField(
-              controller: deptCtrl,
-              decoration: const InputDecoration(labelText: 'Department'),
-            ),
+            TextField(controller: deptCtrl, decoration: InputDecoration(labelText: l10n?.department ?? 'Department')),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n?.cancel ?? 'Cancel'),
           ),
           FilledButton(
             onPressed: () async {
@@ -164,30 +161,33 @@ class _UsersScreenState extends State<UsersScreen> {
                   email: emailCtrl.text.isNotEmpty ? emailCtrl.text : null,
                   department: deptCtrl.text.isNotEmpty ? deptCtrl.text : null,
                 );
-                _showSnack('User updated');
+                if (mounted) {
+                  final l10n2 = AppLocalizations.of(context);
+                  _showSnack(l10n2?.userUpdated ?? 'User updated');
+                }
                 _loadUsers();
               } catch (e) {
                 _showSnack('Failed: $e', isError: true);
               }
             },
-            child: const Text('Save'),
+            child: Text(l10n?.save ?? 'Save'),
           ),
         ],
       ),
     );
   }
 
-  // ─── Delete User ─────────────────────────────────────────
   void _confirmDelete(User user) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete User'),
-        content: Text('Are you sure you want to delete "${user.name}"?\nThis action cannot be undone.'),
+        title: Text(l10n?.deleteUser ?? 'Delete User'),
+        content: Text(l10n?.deleteUserConfirm ?? 'Are you sure you want to delete this user? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n?.cancel ?? 'Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -195,13 +195,16 @@ class _UsersScreenState extends State<UsersScreen> {
               Navigator.of(ctx).pop();
               try {
                 await _api.deleteUser(user.id);
-                _showSnack('User deleted');
+                if (mounted) {
+                  final l10n2 = AppLocalizations.of(context);
+                  _showSnack(l10n2?.userDeleted ?? 'User deleted');
+                }
                 _loadUsers();
               } catch (e) {
                 _showSnack('Failed: $e', isError: true);
               }
             },
-            child: const Text('Delete'),
+            child: Text(l10n?.delete ?? 'Delete'),
           ),
         ],
       ),
@@ -211,15 +214,12 @@ class _UsersScreenState extends State<UsersScreen> {
   void _showSnack(String msg, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: isError ? Colors.red : null,
-      ),
+      SnackBar(content: Text(msg), backgroundColor: isError ? Colors.red : null),
     );
   }
 
-  // ─── Card UI ─────────────────────────────────────────────
   Widget _buildUserCard(User user) {
+    final l10n = AppLocalizations.of(context);
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Padding(
@@ -227,16 +227,12 @@ class _UsersScreenState extends State<UsersScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Name + Role badge
             Row(
               children: [
                 Expanded(
                   child: Text(
                     user.name,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
                 Container(
@@ -246,7 +242,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    user.role,
+                    _translateRole(context, user.role),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -259,14 +255,12 @@ class _UsersScreenState extends State<UsersScreen> {
             const SizedBox(height: 6),
             Text(user.email, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 10),
-
-            // Status chips
             Wrap(
               spacing: 8,
               children: [
                 _statusChip(
                   user.isApproved ? Icons.check_circle : Icons.pending,
-                  user.isApproved ? 'Approved' : 'Pending',
+                  user.isApproved ? (l10n?.approved ?? 'Approved') : (l10n?.pending ?? 'Pending'),
                   user.isApproved ? Colors.green : Colors.orange,
                 ),
                 _statusChip(
@@ -277,18 +271,16 @@ class _UsersScreenState extends State<UsersScreen> {
               ],
             ),
             const Divider(height: 20),
-
-            // Action buttons
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 if (!user.isApproved)
-                  _actionBtn(Icons.check, 'Approve', Colors.green, () => _approveUser(user.id)),
-                _actionBtn(Icons.badge, 'Role', Colors.indigo, () => _showRoleDialog(user)),
-                _actionBtn(Icons.supervisor_account, 'Manager', Colors.teal, () => _showManagerDialog(user)),
-                _actionBtn(Icons.edit, 'Edit', Colors.blue, () => _showEditDialog(user)),
-                _actionBtn(Icons.delete_outline, 'Delete', Colors.red, () => _confirmDelete(user)),
+                  _actionBtn(Icons.check, l10n?.approve ?? 'Approve', Colors.green, () => _approveUser(user.id)),
+                _actionBtn(Icons.badge, l10n?.role ?? 'Role', Colors.indigo, () => _showRoleDialog(user)),
+                _actionBtn(Icons.supervisor_account, l10n?.manager ?? 'Manager', Colors.teal, () => _showManagerDialog(user)),
+                _actionBtn(Icons.edit, l10n?.edit ?? 'Edit', Colors.blue, () => _showEditDialog(user)),
+                _actionBtn(Icons.delete_outline, l10n?.delete ?? 'Delete', Colors.red, () => _confirmDelete(user)),
               ],
             ),
           ],
@@ -325,15 +317,13 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
-  // ─── Build ──────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('User Management'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadUsers),
-        ],
+        title: Text(l10n?.userManagement ?? 'User Management'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _loadUsers)],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -346,18 +336,16 @@ class _UsersScreenState extends State<UsersScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                       ),
-                      ElevatedButton(onPressed: _loadUsers, child: const Text('Retry')),
+                      ElevatedButton(onPressed: _loadUsers, child: Text(l10n?.retry ?? 'Retry')),
                     ],
                   ),
                 )
               : SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
+                  physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                   padding: const EdgeInsets.only(bottom: 40),
                   child: Column(
                     children: _users.isEmpty
-                        ? [const SizedBox(height: 200), const Center(child: Text('No users found'))]
+                        ? [const SizedBox(height: 200), Center(child: Text(l10n?.noUsersFound ?? 'No users found'))]
                         : _users.map((user) => _buildUserCard(user)).toList(),
                   ),
                 ),

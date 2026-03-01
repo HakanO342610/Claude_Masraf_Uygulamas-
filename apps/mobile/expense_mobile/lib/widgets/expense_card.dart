@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../models/expense.dart';
 
 class ExpenseCard extends StatelessWidget {
   final Expense expense;
   final VoidCallback? onTap;
+  final VoidCallback? onDelete;
+  final bool isDuplicate;
 
   const ExpenseCard({
     super.key,
     required this.expense,
     this.onTap,
+    this.onDelete,
+    this.isDuplicate = false,
   });
 
   @override
@@ -80,14 +85,30 @@ class ExpenseCard extends StatelessWidget {
                         Text(
                           'KDV: ${expense.taxAmount!.toStringAsFixed(2)}',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                         ),
                       const SizedBox(height: 4),
-                      _StatusBadge(status: expense.status),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (onDelete != null)
+                            InkWell(
+                              onTap: onDelete,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade100,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.delete_outline, size: 16, color: Colors.red.shade800),
+                              ),
+                            ),
+                          _StatusBadge(status: expense.status),
+                        ],
+                      ),
                     ],
                   ),
                 ],
@@ -103,6 +124,29 @@ class ExpenseCard extends StatelessWidget {
                     _buildTag(context, expense.costCenter),
                   if (expense.projectCode.isNotEmpty)
                     _buildTag(context, expense.projectCode),
+                  if (isDuplicate)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.orange.shade300),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange.shade800),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Mükerrer / Duplicate',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: Colors.orange.shade900,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -210,7 +254,7 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        _formatStatus(status),
+        _formatStatus(status, context),
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
@@ -220,20 +264,21 @@ class _StatusBadge extends StatelessWidget {
     );
   }
 
-  static String _formatStatus(String status) {
+  String _formatStatus(String status, BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     switch (status) {
       case 'DRAFT':
-        return 'Draft';
+        return l10n?.draft ?? 'Draft';
       case 'SUBMITTED':
-        return 'Submitted';
+        return l10n?.submitted ?? 'Submitted';
       case 'MANAGER_APPROVED':
-        return 'Manager Approved';
+        return l10n?.managerApproved ?? 'Manager Approved';
       case 'FINANCE_APPROVED':
-        return 'Finance Approved';
+        return l10n?.financeApproved ?? 'Finance Approved';
       case 'REJECTED':
-        return 'Rejected';
+        return l10n?.rejected ?? 'Rejected';
       case 'POSTED_TO_SAP':
-        return 'Posted to SAP';
+        return l10n?.postedToSap ?? 'Posted to SAP';
       default:
         return status;
     }

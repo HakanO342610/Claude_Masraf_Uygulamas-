@@ -12,6 +12,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { sapApi } from '@/lib/api';
+import { useI18nStore } from '@/lib/store';
 
 interface QueueItem {
   id: string;
@@ -47,6 +48,8 @@ const statusConfig: Record<string, { icon: any; color: string; bg: string }> = {
 };
 
 export default function SapQueuePage() {
+  const t = useI18nStore((state) => state.t);
+  
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +65,7 @@ export default function SapQueuePage() {
       const res = await sapApi.getQueueStatus();
       setQueueStatus(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load SAP queue');
+      setError(err.response?.data?.message || t.failedLoadSapQueue);
     } finally {
       setIsLoading(false);
     }
@@ -74,7 +77,7 @@ export default function SapQueuePage() {
       await sapApi.retryQueueItem(id);
       await fetchQueue();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Retry failed');
+      setError(err.response?.data?.message || t.retryFailed);
     } finally {
       setRetryingId(null);
     }
@@ -83,9 +86,9 @@ export default function SapQueuePage() {
   const handleSync = async () => {
     try {
       await sapApi.syncMasterData();
-      alert('Master data sync triggered');
+      alert(t.masterDataSyncTriggered);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Sync failed');
+      setError(err.response?.data?.message || t.syncFailed);
     }
   };
 
@@ -93,7 +96,7 @@ export default function SapQueuePage() {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-        <span className="ml-2 text-sm text-gray-500">Loading SAP queue...</span>
+        <span className="ml-2 text-sm text-gray-500">{t.loadSapQueue}</span>
       </div>
     );
   }
@@ -108,20 +111,20 @@ export default function SapQueuePage() {
   }
 
   const stats = [
-    { label: 'Pending', value: queueStatus?.pending || 0, color: 'text-amber-600' },
-    { label: 'Processing', value: queueStatus?.processing || 0, color: 'text-blue-600' },
-    { label: 'Completed', value: queueStatus?.completed || 0, color: 'text-emerald-600' },
-    { label: 'Failed', value: queueStatus?.failed || 0, color: 'text-red-600' },
-    { label: 'Dead Letter', value: queueStatus?.deadLetter || 0, color: 'text-gray-600' },
+    { label: t.pending, value: queueStatus?.pending || 0, color: 'text-amber-600' },
+    { label: t.processing, value: queueStatus?.processing || 0, color: 'text-blue-600' },
+    { label: t.completed, value: queueStatus?.completed || 0, color: 'text-emerald-600' },
+    { label: t.failed, value: queueStatus?.failed || 0, color: 'text-red-600' },
+    { label: t.deadLetter, value: queueStatus?.deadLetter || 0, color: 'text-gray-600' },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">SAP Integration Queue</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t.sapIntegrationQueue}</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Monitor and manage SAP posting queue
+            {t.monitorManageSapQueue}
           </p>
         </div>
         <div className="flex gap-2">
@@ -130,14 +133,14 @@ export default function SapQueuePage() {
             className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <RefreshCw className="h-4 w-4" />
-            Sync Master Data
+            {t.syncMasterData}
           </button>
           <button
             onClick={fetchQueue}
             className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
           >
             <RefreshCw className="h-4 w-4" />
-            Refresh
+            {t.refresh}
           </button>
         </div>
       </div>
@@ -156,22 +159,22 @@ export default function SapQueuePage() {
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-6 py-3">
-          <h3 className="text-sm font-semibold text-gray-900">Queue Items</h3>
+          <h3 className="text-sm font-semibold text-gray-900">{t.queueItems}</h3>
         </div>
         {!queueStatus?.items?.length ? (
           <div className="px-6 py-8 text-center text-sm text-gray-500">
-            No items in queue
+            {t.noItemsInQueue}
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="px-6 py-3 text-left font-medium text-gray-500">Status</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">Expense</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">Attempts</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">Error</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">Next Retry</th>
-                <th className="px-6 py-3 text-right font-medium text-gray-500">Action</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">{t.status}</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">{t.expenseTitle}</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">{t.attempts}</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">{t.error}</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">{t.nextRetry}</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500">{t.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -185,11 +188,15 @@ export default function SapQueuePage() {
                         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${cfg.bg} ${cfg.color}`}
                       >
                         <Icon className="h-3 w-3" />
-                        {item.status}
+                        {item.status === 'DEAD_LETTER' ? t.deadLetter : 
+                         item.status === 'PENDING' ? t.pending :
+                         item.status === 'PROCESSING' ? t.processing : 
+                         item.status === 'COMPLETED' ? t.completed : 
+                         item.status === 'FAILED' ? t.failed : item.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-gray-700">
-                      {item.expense?.category || item.expenseId.slice(0, 8)}
+                      {(item.expense?.category ? (t[`cat_${item.expense.category.replace(/[&\s]/g, '_')}` as keyof typeof t] || item.expense.category) : '') || item.expenseId.slice(0, 8)}
                     </td>
                     <td className="px-6 py-4 text-gray-500">{item.attempts}/3</td>
                     <td className="px-6 py-4">
@@ -218,7 +225,7 @@ export default function SapQueuePage() {
                           ) : (
                             <RotateCcw className="h-3 w-3" />
                           )}
-                          Retry
+                          {t.retry}
                         </button>
                       )}
                     </td>

@@ -15,6 +15,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { expenseApi } from '@/lib/api';
+import { useI18nStore } from '@/lib/store';
 import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
 
 interface Expense {
@@ -31,17 +32,8 @@ interface Expense {
   projectCode?: string;
 }
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'All Statuses' },
-  { value: 'DRAFT', label: 'Draft' },
-  { value: 'SUBMITTED', label: 'Submitted' },
-  { value: 'MANAGER_APPROVED', label: 'Manager Approved' },
-  { value: 'FINANCE_APPROVED', label: 'Finance Approved' },
-  { value: 'REJECTED', label: 'Rejected' },
-  { value: 'POSTED_TO_SAP', label: 'Posted to SAP' },
-];
-
 export default function ExpensesPage() {
+  const { t } = useI18nStore();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +44,16 @@ export default function ExpensesPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const pageSize = 10;
+
+  const STATUS_OPTIONS = [
+    { value: '', label: t.allStatuses },
+    { value: 'DRAFT', label: t.draft },
+    { value: 'SUBMITTED', label: t.submitted },
+    { value: 'MANAGER_APPROVED', label: t.managerApproved },
+    { value: 'FINANCE_APPROVED', label: t.financeApproved },
+    { value: 'REJECTED', label: t.rejected },
+    { value: 'POSTED_TO_SAP', label: t.postedToSap },
+  ];
 
   const totalPages = Math.ceil(expenses.length / pageSize);
   const paginatedExpenses = expenses.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -99,15 +101,15 @@ export default function ExpensesPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Expenses</h2>
-          <p className="mt-1 text-sm text-gray-500">Manage all your expense reports</p>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{t.expenses}</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t.manageExpenses}</p>
         </div>
         <Link
           href="/dashboard/expenses/new"
           className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
         >
           <Plus className="h-4 w-4" />
-          New Expense
+          {t.newExpense}
         </Link>
       </div>
 
@@ -115,12 +117,12 @@ export default function ExpensesPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-gray-400" />
-          <span className="text-sm font-medium text-gray-600">Filter:</span>
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t.filter}:</span>
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -135,16 +137,14 @@ export default function ExpensesPage() {
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            placeholder="From"
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
           />
           <span className="text-sm text-gray-400">-</span>
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            placeholder="To"
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
           />
         </div>
 
@@ -155,19 +155,19 @@ export default function ExpensesPage() {
               setFromDate('');
               setToDate('');
             }}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400"
           >
-            Clear Filters
+            {t.clearFilters}
           </button>
         )}
       </div>
 
       {/* Expenses table */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-            <span className="ml-2 text-sm text-gray-500">Loading expenses...</span>
+            <span className="ml-2 text-sm text-gray-500">{t.loading}</span>
           </div>
         ) : error ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-red-600">
@@ -176,44 +176,40 @@ export default function ExpensesPage() {
           </div>
         ) : expenses.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-sm text-gray-500">
-              {statusFilter
-                ? `No expenses with status "${statusFilter}" found.`
-                : 'No expenses found. Create your first expense report.'}
-            </p>
+            <p className="text-sm text-gray-500">{t.noData}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th className="px-6 py-3 font-medium text-gray-500">Date</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Description</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Amount</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">KDV</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Category</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Cost Center</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Status</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">SAP Doc</th>
-                  <th className="px-6 py-3 font-medium text-gray-500">Actions</th>
+                <tr className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-700/50">
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.date}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.description}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.amount}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.kdv}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.category}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.costCenter}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.status}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.sapDoc}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.actions}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {paginatedExpenses.map((expense) => (
-                  <tr key={expense.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-3.5 text-gray-900">
+                  <tr key={expense.id} className="hover:bg-gray-50 transition-colors dark:hover:bg-gray-700/50">
+                    <td className="px-6 py-3.5 text-gray-900 dark:text-gray-200">
                       {format(new Date(expense.expenseDate), 'dd MMM yyyy')}
                     </td>
-                    <td className="px-6 py-3.5 text-gray-600 max-w-xs truncate">
+                    <td className="px-6 py-3.5 text-gray-600 max-w-xs truncate dark:text-gray-300">
                       {expense.description || '-'}
                     </td>
-                    <td className="px-6 py-3.5 font-medium text-gray-900">
+                    <td className="px-6 py-3.5 font-medium text-gray-900 dark:text-gray-200">
                       {new Intl.NumberFormat('tr-TR', {
                         style: 'currency',
                         currency: expense.currency || 'TRY',
                       }).format(Number(expense.amount))}
                     </td>
-                    <td className="px-6 py-3.5 text-gray-500 text-xs">
+                    <td className="px-6 py-3.5 text-gray-500 text-xs dark:text-gray-400">
                       {expense.taxAmount != null && Number(expense.taxAmount) > 0
                         ? new Intl.NumberFormat('tr-TR', {
                             style: 'currency',
@@ -221,12 +217,12 @@ export default function ExpensesPage() {
                           }).format(Number(expense.taxAmount))
                         : '-'}
                     </td>
-                    <td className="px-6 py-3.5 text-gray-600">{expense.category}</td>
-                    <td className="px-6 py-3.5 text-gray-500">{expense.costCenter || '-'}</td>
+                    <td className="px-6 py-3.5 text-gray-600 dark:text-gray-300">{expense.category}</td>
+                    <td className="px-6 py-3.5 text-gray-500 dark:text-gray-400">{expense.costCenter || '-'}</td>
                     <td className="px-6 py-3.5">
                       <ExpenseStatusBadge status={expense.status} />
                     </td>
-                    <td className="px-6 py-3.5 text-gray-500">
+                    <td className="px-6 py-3.5 text-gray-500 dark:text-gray-400">
                       {expense.sapDocumentNumber || '-'}
                     </td>
                     <td className="px-6 py-3.5">
@@ -237,14 +233,14 @@ export default function ExpensesPage() {
                             className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
                           >
                             <Pencil className="h-3.5 w-3.5" />
-                            Edit
+                            {t.edit}
                           </Link>
                           <button
                             onClick={() => setDeleteTarget(expense.id)}
                             className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                            Delete
+                            {t.deleteExpense}
                           </button>
                         </div>
                       )}
@@ -261,7 +257,7 @@ export default function ExpensesPage() {
       {!isLoading && !error && expenses.length > pageSize && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">
-            Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, expenses.length)} of {expenses.length} expenses
+            {t.showing} {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, expenses.length)} / {expenses.length}
           </p>
           <div className="flex items-center gap-1">
             <button
@@ -298,30 +294,28 @@ export default function ExpensesPage() {
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl">
+          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                 <Trash2 className="h-5 w-5 text-red-600" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">Delete Expense</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{t.deleteExpense}</h3>
             </div>
-            <p className="mb-6 text-sm text-gray-600">
-              Are you sure you want to delete this expense? This action cannot be undone.
-            </p>
+            <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">{t.deleteConfirm}</p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteTarget(null)}
                 disabled={isDeleting}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
               >
-                Cancel
+                {t.cancel}
               </button>
               <button
                 onClick={confirmDelete}
                 disabled={isDeleting}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
               >
-                {isDeleting ? 'Deleting...' : 'Delete'}
+                {isDeleting ? t.deleting : t.deleteExpense}
               </button>
             </div>
           </div>

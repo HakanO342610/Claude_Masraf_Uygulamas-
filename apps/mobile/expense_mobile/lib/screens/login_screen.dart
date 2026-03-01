@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/auth_service.dart';
+import '../providers/locale_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -38,7 +40,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final localeProvider = Provider.of<LocaleProvider>(context);
+    final isTr = localeProvider.locale.languageCode == 'tr';
+
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              localeProvider.setLocale(Locale(isTr ? 'en' : 'tr'));
+            },
+            icon: Icon(Icons.language, size: 20, color: Theme.of(context).colorScheme.primary),
+            label: Text(
+              isTr ? 'EN' : 'TR',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          )
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -49,15 +74,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo / Header
-                  Icon(
-                    Icons.account_balance_wallet,
-                    size: 72,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                  Icon(Icons.account_balance_wallet, size: 72, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(height: 16),
                   Text(
-                    'Expense Manager',
+                    l10n?.appTitle ?? 'Expense Management',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
@@ -66,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Sign in to manage your expenses',
+                    l10n?.signInSubtitle ?? 'Sign in to manage your expenses',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -87,15 +107,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.error_outline,
-                                color: Theme.of(context).colorScheme.error,
-                                size: 20),
+                            Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 20),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 auth.error!,
-                                style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onErrorContainer),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
                               ),
                             ),
                             IconButton(
@@ -115,18 +132,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      hintText: 'Enter your email address',
-                      prefixIcon: Icon(Icons.email_outlined),
+                    decoration: InputDecoration(
+                      labelText: l10n?.email ?? 'Email',
+                      hintText: l10n?.emailHint ?? 'Enter your email address',
+                      prefixIcon: const Icon(Icons.email_outlined),
                     ),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Please enter your email';
-                      }
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                          .hasMatch(value.trim())) {
-                        return 'Please enter a valid email';
+                      if (value == null || value.trim().isEmpty) return l10n?.emailRequired ?? 'Please enter your email';
+                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+                        return l10n?.emailInvalid ?? 'Please enter a valid email';
                       }
                       return null;
                     },
@@ -140,24 +154,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) => _handleLogin(),
                     decoration: InputDecoration(
-                      labelText: 'Password',
-                      hintText: 'Enter your password',
+                      labelText: l10n?.password ?? 'Password',
+                      hintText: l10n?.passwordHint ?? 'Enter your password',
                       prefixIcon: const Icon(Icons.lock_outlined),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined),
-                        onPressed: () =>
-                            setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your password';
-                      }
-                      if (value.length < 6) {
-                        return 'Password must be at least 6 characters';
-                      }
+                      if (value == null || value.isEmpty) return l10n?.passwordRequired ?? 'Please enter your password';
+                      if (value.length < 6) return l10n?.passwordMinLength ?? 'Password must be at least 6 characters';
                       return null;
                     },
                   ),
@@ -168,19 +175,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     builder: (context, auth, _) {
                       return FilledButton(
                         onPressed: auth.loading ? null : _handleLogin,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
+                        style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                         child: auth.loading
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                               )
-                            : const Text('Sign In', style: TextStyle(fontSize: 16)),
+                            : Text(l10n?.signIn ?? 'Sign In', style: const TextStyle(fontSize: 16)),
                       );
                     },
                   ),
@@ -191,13 +193,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        "Don't have an account? ",
+                        '${l10n?.noAccount ?? "Don't have an account?"} ',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                       TextButton(
-                        onPressed: () =>
-                            Navigator.of(context).pushNamed('/register'),
-                        child: const Text('Sign Up'),
+                        onPressed: () => Navigator.of(context).pushNamed('/register'),
+                        child: Text(l10n?.signUp ?? 'Sign Up'),
                       ),
                     ],
                   ),

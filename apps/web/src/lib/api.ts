@@ -156,6 +156,7 @@ export const receiptsApi = {
 export const usersApi = {
   getAll: () => api.get('/users'),
   getById: (id: string) => api.get(`/users/${id}`),
+  updateUser: (id: string, data: { name?: string; email?: string; department?: string }) => api.patch(`/users/${id}`, data),
   updateRole: (id: string, role: string) => api.patch(`/users/${id}/role`, { role }),
   assignManager: (id: string, managerId: string) =>
     api.patch(`/users/${id}/manager`, { managerId }),

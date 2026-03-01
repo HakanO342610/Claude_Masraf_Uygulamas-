@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ScrollText, Search, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useAuthStore } from '@/lib/store';
+import { useAuthStore, useI18nStore } from '@/lib/store';
 import api from '@/lib/api';
 
 interface AuditLog {
@@ -35,6 +35,8 @@ const ACTION_COLORS: Record<string, string> = {
 export default function AuditLogsPage() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const t = useI18nStore((state) => state.t);
+  
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -64,7 +66,7 @@ export default function AuditLogsPage() {
       setTotal(res.data.total);
       setTotalPages(res.data.totalPages);
     } catch {
-      setError('Denetim günlükleri yüklenemedi.');
+      setError(t.error);
     } finally {
       setLoading(false);
     }
@@ -76,8 +78,8 @@ export default function AuditLogsPage() {
       <div className="flex items-center gap-3">
         <ScrollText className="h-6 w-6 text-indigo-600" />
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Denetim Günlüğü</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Tüm sistem işlemleri — {total} kayıt</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t.auditLogs}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t.auditLogDesc} — {total} {t.noData.replace('Kayıt bulunamadı', 'kayıt').replace('No records found', 'records')}</p>
         </div>
       </div>
 
@@ -87,7 +89,7 @@ export default function AuditLogsPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="İşlem filtrele (APPROVED, REJECTED...)"
+            placeholder={t.filterActionPlaceholder}
             value={actionFilter}
             onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
             className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
@@ -98,7 +100,7 @@ export default function AuditLogsPage() {
             onClick={() => { setActionFilter(''); setPage(1); }}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
           >
-            Temizle
+            {t.clear}
           </button>
         )}
       </div>
@@ -114,17 +116,17 @@ export default function AuditLogsPage() {
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
           </div>
         ) : logs.length === 0 ? (
-          <div className="p-12 text-center text-gray-500 dark:text-gray-400">Kayıt bulunamadı</div>
+          <div className="p-12 text-center text-gray-500 dark:text-gray-400">{t.noData}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">Tarih</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">Kullanıcı</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">İşlem</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">Masraf</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">Detay</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">{t.date}</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">{t.user}</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">{t.action}</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">{t.expenseTitle || 'Masraf'}</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-400">{t.details}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -139,13 +141,13 @@ export default function AuditLogsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_COLORS[log.action] ?? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
-                        {log.action}
+                        {t[`logAction_${log.action}` as keyof typeof t] || log.action}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                       {log.expense ? (
                         <span className="text-xs">
-                          {log.expense.category} · {Number(log.expense.amount).toLocaleString('tr-TR')} {log.expense.currency}
+                          {(t[`cat_${log.expense.category.replace(/[&\s]/g, '_')}` as keyof typeof t] || log.expense.category)} · {Number(log.expense.amount).toLocaleString('tr-TR')} {log.expense.currency}
                         </span>
                       ) : '—'}
                     </td>
@@ -163,7 +165,7 @@ export default function AuditLogsPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-700">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Sayfa {page} / {totalPages}
+              {t.page} {page} / {totalPages}
             </p>
             <div className="flex gap-2">
               <button
@@ -171,14 +173,14 @@ export default function AuditLogsPage() {
                 disabled={page === 1}
                 className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
               >
-                <ChevronLeft className="h-4 w-4" /> Önceki
+                <ChevronLeft className="h-4 w-4" /> {t.previous}
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
               >
-                Sonraki <ChevronRight className="h-4 w-4" />
+                {t.next} <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>

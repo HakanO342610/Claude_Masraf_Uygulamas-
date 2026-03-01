@@ -27,7 +27,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _pendingCount = 0;
   int _approvedCount = 0;
   int _rejectedCount = 0;
-  double _totalAmount = 0;
+  Map<String, double> _amountByCurrency = {};
 
   @override
   void initState() {
@@ -48,7 +48,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _pendingCount = expenses.where((e) => e.isPending).length;
       _approvedCount = expenses.where((e) => e.isApproved).length;
       _rejectedCount = expenses.where((e) => e.isRejected).length;
-      _totalAmount = expenses.fold(0.0, (sum, e) => sum + e.amount);
+      final byCurrency = <String, double>{};
+      for (final e in expenses) {
+        byCurrency[e.currency] = (byCurrency[e.currency] ?? 0) + e.amount;
+      }
+      _amountByCurrency = byCurrency;
     } on ApiException catch (e) {
       _error = e.message;
       if (e.statusCode == 401) {
@@ -60,6 +64,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (mounted) setState(() => _loading = false);
+  }
+
+  double _getApproximateTryTotal() {
+    double total = 0;
+    _amountByCurrency.forEach((currency, amount) {
+      if (currency == 'USD') {
+        total += amount * 36.5;
+      } else if (currency == 'EUR') {
+        total += amount * 38.2;
+      } else {
+        total += amount; // Defaults to assuming TRY
+      }
+    });
+    return total;
   }
 
   void _onTabTapped(int index, bool canApprove) async {
@@ -211,7 +229,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? _buildErrorView()
-                : _buildDashboardContent(),
+                : _buildDashboardContent(l10n),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
@@ -292,21 +310,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildDashboardContent() {
+  Widget _buildDashboardContent(AppLocalizations? l10n) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
         // Greeting
         Text(
-          'Welcome back, ${context.read<AuthService>().user?.name.split(' ').first ?? 'User'}',
+          '${l10n?.welcomeBack ?? 'Welcome back'}, ${context.read<AuthService>().user?.name.split(' ').first ?? 'User'}',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
         ),
         const SizedBox(height: 4),
         Text(
-          'Here is your expense summary',
+          l10n?.hereIsSummary ?? 'Here is your expense summary',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -350,11 +368,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Total amount card
+        // Total amount card (para birimine göre ayrı ayrı)
         Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -362,7 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.currency_lira,
+                  child: Icon(Icons.account_balance_wallet_outlined,
                       color: Theme.of(context).colorScheme.onPrimaryContainer),
                 ),
                 const SizedBox(width: 16),
@@ -370,16 +389,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Total Expenses',
+                      Text(l10n?.totalExpenses ?? 'Total Expenses',
                           style: Theme.of(context).textTheme.bodyMedium),
-                      Text(
-                        '${_totalAmount.toStringAsFixed(2)} TRY',
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      const SizedBox(height: 4),
+                      if (_amountByCurrency.isEmpty)
+                        Text(
+                          '0.00 TRY',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                      ..._amountByCurrency.entries.map((entry) => Text(
+                            '${entry.value.toStringAsFixed(2)} ${entry.key}',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
-                      ),
+                          )),
+                      if (_amountByCurrency.length > 1 || (_amountByCurrency.isNotEmpty && !_amountByCurrency.containsKey('TRY')))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                decoration: const BoxDecoration(
+                                  border: Border(top: BorderSide(color: Colors.black12, width: 1)),
+                                ),
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Row(
+                                  children: [
+                                    const Text('≈ ', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                    Text(
+                                      '₺${_getApproximateTryTotal().toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                localeProvider.isTurkish ? 'Yaklaşık TRY karşılığı' : 'Approx. TRY equivalent',
+                                style: const TextStyle(color: Colors.grey, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -394,14 +453,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Recent Expenses',
+              l10n?.recentExpenses ?? 'Recent Expenses',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pushNamed('/expenses'),
-              child: const Text('View All'),
+              child: Text(l10n?.viewAll ?? 'View All'),
             ),
           ],
         ),
@@ -418,14 +477,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: Theme.of(context).colorScheme.onSurfaceVariant),
                   const SizedBox(height: 8),
                   Text(
-                    'No expenses yet',
+                    l10n?.noExpensesYet ?? 'No expenses yet',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Tap the + button to add your first expense',
+                    l10n?.tapToAddExpense ?? 'Tap the + button to add your first expense',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

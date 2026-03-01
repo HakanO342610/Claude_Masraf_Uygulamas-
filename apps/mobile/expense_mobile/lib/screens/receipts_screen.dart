@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/api_service.dart';
 
 class ReceiptsScreen extends StatefulWidget {
@@ -28,8 +29,9 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
       _receipts = await _api.getMyReceipts();
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load receipts: $e')),
+          SnackBar(content: Text('${l10n?.failedToLoad ?? 'Failed to load'}: $e')),
         );
       }
     } finally {
@@ -50,15 +52,17 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
     try {
       await _api.uploadReceipt(image);
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Receipt uploaded successfully')),
+          SnackBar(content: Text(l10n?.receiptUploadSuccess ?? 'Receipt uploaded successfully')),
         );
       }
       await _loadReceipts();
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
+          SnackBar(content: Text('${l10n?.uploadFailed ?? 'Upload failed'}: $e')),
         );
       }
     } finally {
@@ -79,15 +83,17 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
     try {
       await _api.uploadReceipt(photo);
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Receipt uploaded successfully')),
+          SnackBar(content: Text(l10n?.receiptUploadSuccess ?? 'Receipt uploaded successfully')),
         );
       }
       await _loadReceipts();
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
+          SnackBar(content: Text('${l10n?.uploadFailed ?? 'Upload failed'}: $e')),
         );
       }
     } finally {
@@ -103,34 +109,27 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
 
   IconData _ocrIcon(String status) {
     switch (status) {
-      case 'COMPLETED':
-        return Icons.check_circle;
-      case 'PROCESSING':
-        return Icons.hourglass_empty;
-      case 'FAILED':
-        return Icons.error;
-      default:
-        return Icons.pending;
+      case 'COMPLETED': return Icons.check_circle;
+      case 'PROCESSING': return Icons.hourglass_empty;
+      case 'FAILED': return Icons.error;
+      default: return Icons.pending;
     }
   }
 
   Color _ocrColor(String status) {
     switch (status) {
-      case 'COMPLETED':
-        return Colors.green;
-      case 'PROCESSING':
-        return Colors.blue;
-      case 'FAILED':
-        return Colors.red;
-      default:
-        return Colors.amber;
+      case 'COMPLETED': return Colors.green;
+      case 'PROCESSING': return Colors.blue;
+      case 'FAILED': return Colors.red;
+      default: return Colors.amber;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Receipts')),
+      appBar: AppBar(title: Text(l10n?.receipts ?? 'Receipts')),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -147,10 +146,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                 ? const SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.upload_file),
           ),
@@ -166,12 +162,12 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                       Icon(Icons.receipt_long, size: 64, color: Colors.grey[300]),
                       const SizedBox(height: 16),
                       Text(
-                        'No receipts yet',
+                        l10n?.noReceiptsYet ?? 'No receipts yet',
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Upload a photo of your receipt',
+                        l10n?.uploadReceiptHint ?? 'Upload a photo of your receipt',
                         style: TextStyle(fontSize: 12, color: Colors.grey[400]),
                       ),
                     ],
@@ -187,7 +183,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                       final receipt = _receipts[index];
                       final ocrStatus = receipt['ocrStatus']?.toString() ?? 'PENDING';
                       final ocrData = receipt['ocrData'] as Map<String, dynamic>?;
-                      
+
                       String? extractedText;
                       if (ocrData != null) {
                         final vendor = ocrData['extractedVendor'];
@@ -196,10 +192,8 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                         final parts = <String>[];
                         if (vendor != null) parts.add(vendor.toString());
                         if (date != null) parts.add(date.toString());
-                        if (amount != null) parts.add('${amount.toString()}');
-                        if (parts.isNotEmpty) {
-                          extractedText = parts.join(' • ');
-                        }
+                        if (amount != null) parts.add(amount.toString());
+                        if (parts.isNotEmpty) extractedText = parts.join(' • ');
                       }
 
                       return Card(
@@ -221,18 +215,11 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                                 children: [
                                   Text(_formatSize(receipt['fileSize'] as int? ?? 0)),
                                   const SizedBox(width: 8),
-                                  Icon(
-                                    _ocrIcon(ocrStatus),
-                                    size: 14,
-                                    color: _ocrColor(ocrStatus),
-                                  ),
+                                  Icon(_ocrIcon(ocrStatus), size: 14, color: _ocrColor(ocrStatus)),
                                   const SizedBox(width: 4),
                                   Text(
                                     ocrStatus,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: _ocrColor(ocrStatus),
-                                    ),
+                                    style: TextStyle(fontSize: 12, color: _ocrColor(ocrStatus)),
                                   ),
                                 ],
                               ),
@@ -260,8 +247,11 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> {
                             ],
                           ),
                           trailing: receipt['expenseId'] != null
-                              ? const Chip(
-                                  label: Text('Attached', style: TextStyle(fontSize: 10)),
+                              ? Chip(
+                                  label: Text(
+                                    l10n?.attached ?? 'Attached',
+                                    style: const TextStyle(fontSize: 10),
+                                  ),
                                   padding: EdgeInsets.zero,
                                   visualDensity: VisualDensity.compact,
                                 )

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../models/expense.dart';
 import '../services/api_service.dart';
 
@@ -107,16 +108,17 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       _ocrMessage = null;
     });
 
+    final l10n = AppLocalizations.of(context);
     try {
       final res = await _api.uploadReceipt(image);
-      
+
       setState(() {
         _uploadedReceiptId = res['id'];
-        
+
         if (res.containsKey('ocrData') && res['ocrData'] != null) {
           int fieldsUpdated = 0;
           final ocr = res['ocrData'];
-          
+
           if (ocr['extractedAmount'] != null) {
             _amountController.text = ocr['extractedAmount'].toString();
             fieldsUpdated++;
@@ -136,7 +138,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             _descriptionController.text = 'Expense at ${ocr['extractedVendor']}';
             fieldsUpdated++;
           }
-          if (ocr['extractedCategory'] != null && _availableCategories.contains(ocr['extractedCategory'])) {
+          if (ocr['extractedCategory'] != null &&
+              _availableCategories.contains(ocr['extractedCategory'])) {
             _selectedCategory = ocr['extractedCategory'];
             fieldsUpdated++;
           }
@@ -144,27 +147,27 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             _selectedCurrency = ocr['currency'];
             fieldsUpdated++;
           }
-          
+
           if (fieldsUpdated > 0) {
             _ocrMessage = 'Auto-filled $fieldsUpdated fields from receipt!';
           } else {
-            _ocrMessage = 'Receipt uploaded. Could not extract data automatically.';
+            _ocrMessage = l10n?.receiptProcessing ?? 'Receipt uploaded.';
           }
         } else {
-          _ocrMessage = 'Receipt uploaded successfully.';
+          _ocrMessage = l10n?.receiptProcessing ?? 'Receipt uploaded successfully.';
         }
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Receipt processing complete')),
+          SnackBar(content: Text(l10n?.receiptProcessing ?? 'Receipt processing complete')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Upload failed: $e'),
+            content: Text('${l10n?.uploadFailed ?? 'Upload failed'}: $e'),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -178,7 +181,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     return {
       'expenseDate': _selectedDate.toIso8601String(),
       'amount': double.parse(_amountController.text),
-      if (_taxAmountController.text.isNotEmpty) 'taxAmount': double.parse(_taxAmountController.text),
+      if (_taxAmountController.text.isNotEmpty)
+        'taxAmount': double.parse(_taxAmountController.text),
       'currency': _selectedCurrency,
       'category': _selectedCategory,
       'costCenter': _costCenterController.text.trim(),
@@ -189,16 +193,62 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   Future<void> _saveDraft() async {
     if (!_formKey.currentState!.validate()) return;
-    await _save(submit: false);
+    await _checkDuplicateAndSave(submit: false);
   }
 
   Future<void> _submitExpense() async {
     if (!_formKey.currentState!.validate()) return;
-    await _save(submit: true);
+    await _checkDuplicateAndSave(submit: true);
+  }
+
+  Future<void> _checkDuplicateAndSave({required bool submit}) async {
+    // Çift tıklama veya eş zamanlı kayıt girişimini engelle
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    if (_existingExpense == null) {
+      bool isDuplicate = false;
+      try {
+        final amount = double.tryParse(_amountController.text) ?? 0;
+        final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+        final existing = await _api.getExpenses(limit: 100);
+        isDuplicate = existing.any((e) =>
+            e.amount == amount &&
+            e.category == _selectedCategory &&
+            DateFormat('yyyy-MM-dd').format(e.expenseDate) == dateStr);
+      } catch (_) {
+        // Ağ hatası → duplicate check atlanamaz, kayıt engelle
+        if (mounted) setState(() => _saving = false);
+        return;
+      }
+
+      if (isDuplicate && mounted) {
+        final l10n = AppLocalizations.of(context);
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 40),
+            title: Text(l10n?.duplicateWarning ?? 'Duplicate Warning'),
+            content: Text(l10n?.duplicateMessage ??
+                'A similar expense (same date, amount, category) already exists. Saving is blocked.'),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(l10n?.cancel ?? 'Close'),
+              ),
+            ],
+          ),
+        );
+        if (mounted) setState(() => _saving = false); // Butonu tekrar etkinleştir
+        return; // Kayıt engellendi
+      }
+    }
+    await _save(submit: submit);
   }
 
   Future<void> _save({required bool submit}) async {
     setState(() => _saving = true);
+    final l10n = AppLocalizations.of(context);
 
     try {
       final data = _buildExpenseData();
@@ -217,17 +267,15 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       if (_uploadedReceiptId != null) {
         try {
           await _api.attachReceiptToExpense(_uploadedReceiptId!, expense.id);
-        } catch (_) {
-          // ignore error if attachment fails
-        }
+        } catch (_) {}
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(submit
-                ? 'Expense submitted successfully'
-                : 'Expense saved as draft'),
+                ? (l10n?.expenseSubmitted ?? 'Expense submitted successfully')
+                : (l10n?.expenseSavedDraft ?? 'Expense saved as draft')),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -246,9 +294,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Failed to save expense. Please try again.'),
-            backgroundColor: Theme.of(context).colorScheme.error,
+          const SnackBar(
+            content: Text('Failed to save expense. Please try again.'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -260,20 +307,62 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isViewOnly = _existingExpense != null &&
-        _existingExpense!.isApproved;
+    final l10n = AppLocalizations.of(context);
+    final isViewOnly = _existingExpense != null && _existingExpense!.isApproved;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_existingExpense != null ? 'Edit Expense' : 'New Expense'),
+        title: Text(_existingExpense != null
+            ? (l10n?.editExpense ?? 'Edit Expense')
+            : (l10n?.newExpense ?? 'New Expense')),
         actions: [
           if (_existingExpense != null && _existingExpense!.isDraft)
             IconButton(
               icon: const Icon(Icons.delete_outline),
-              onPressed: () => _confirmDelete(),
+              onPressed: _confirmDelete,
             ),
         ],
       ),
+      // Save / Submit butonları sayfanın altına sabitlendi
+      bottomNavigationBar: isViewOnly
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _saving ? null : _saveDraft,
+                        icon: const Icon(Icons.save_outlined),
+                        label: Text(l10n?.saveDraft ?? 'Save Draft'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _submitExpense,
+                        icon: _saving
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.send),
+                        label: Text(l10n?.submitExpense ?? 'Submit'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -289,7 +378,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'Upload Receipt',
+                        l10n?.uploadReceipt ?? 'Upload Receipt',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
@@ -316,7 +405,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                                   child: OutlinedButton.icon(
                                     onPressed: () => _pickReceipt(ImageSource.camera),
                                     icon: const Icon(Icons.camera_alt),
-                                    label: const Text('Camera'),
+                                    label: Text(l10n?.camera ?? 'Camera'),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -324,7 +413,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                                   child: OutlinedButton.icon(
                                     onPressed: () => _pickReceipt(ImageSource.gallery),
                                     icon: const Icon(Icons.photo_library),
-                                    label: const Text('Gallery'),
+                                    label: Text(l10n?.gallery ?? 'Gallery'),
                                   ),
                                 ),
                               ],
@@ -340,10 +429,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.calendar_today),
-                title: const Text('Expense Date'),
-                subtitle: Text(
-                  DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
-                ),
+                title: Text(l10n?.expenseDate ?? 'Expense Date'),
+                subtitle: Text(DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate)),
                 trailing: isViewOnly ? null : const Icon(Icons.chevron_right),
                 onTap: isViewOnly ? null : _selectDate,
               ),
@@ -358,26 +445,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                   flex: 2,
                   child: TextFormField(
                     controller: _amountController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d+\.?\d{0,2}')),
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
                     ],
                     readOnly: isViewOnly,
-                    decoration: const InputDecoration(
-                      labelText: 'Amount',
+                    decoration: InputDecoration(
+                      labelText: l10n?.amount ?? 'Amount',
                       hintText: '0.00',
-                      prefixIcon: Icon(Icons.attach_money),
+                      prefixIcon: const Icon(Icons.attach_money),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Required';
-                      }
+                      if (value == null || value.isEmpty) return 'Required';
                       final amount = double.tryParse(value);
-                      if (amount == null || amount <= 0) {
-                        return 'Enter a valid amount';
-                      }
+                      if (amount == null || amount <= 0) return 'Enter a valid amount';
                       return null;
                     },
                   ),
@@ -387,21 +468,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                   flex: 1,
                   child: DropdownButtonFormField<String>(
                     value: _selectedCurrency,
-                    decoration: const InputDecoration(
-                      labelText: 'Currency',
-                    ),
+                    decoration: InputDecoration(labelText: l10n?.currency ?? 'Currency'),
                     items: Expense.currencies.map((currency) {
-                      return DropdownMenuItem(
-                        value: currency,
-                        child: Text(currency),
-                      );
+                      return DropdownMenuItem(value: currency, child: Text(currency));
                     }).toList(),
                     onChanged: isViewOnly
                         ? null
                         : (value) {
-                            if (value != null) {
-                              setState(() => _selectedCurrency = value);
-                            }
+                            if (value != null) setState(() => _selectedCurrency = value);
                           },
                   ),
                 ),
@@ -417,22 +491,18 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                   flex: 1,
                   child: TextFormField(
                     controller: _taxAmountController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d+\.?\d{0,2}')),
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
                     ],
                     readOnly: isViewOnly,
-                    decoration: const InputDecoration(
-                      labelText: 'KDV (VAT)',
+                    decoration: InputDecoration(
+                      labelText: l10n?.kdvVat ?? 'KDV (VAT)',
                       hintText: '0.00',
                     ),
                     validator: (value) {
                       if (value != null && value.isNotEmpty) {
-                        if (double.tryParse(value) == null) {
-                          return 'Invalid';
-                        }
+                        if (double.tryParse(value) == null) return 'Invalid';
                       }
                       return null;
                     },
@@ -443,27 +513,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                   flex: 2,
                   child: DropdownButtonFormField<String>(
                     value: _selectedCategory,
-                    decoration: const InputDecoration(
-                      labelText: 'Category',
-                      prefixIcon: Icon(Icons.category_outlined),
+                    decoration: InputDecoration(
+                      labelText: l10n?.category ?? 'Category',
+                      prefixIcon: const Icon(Icons.category_outlined),
                     ),
                     items: _availableCategories.map((category) {
-                      return DropdownMenuItem(
-                        value: category,
-                        child: Text(category),
-                      );
+                      return DropdownMenuItem(value: category, child: Text(category));
                     }).toList(),
                     onChanged: isViewOnly
                         ? null
                         : (value) {
-                            if (value != null) {
-                              setState(() => _selectedCategory = value);
-                            }
+                            if (value != null) setState(() => _selectedCategory = value);
                           },
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please select a category';
-                      }
+                      if (value == null || value.isEmpty) return 'Please select a category';
                       return null;
                     },
                   ),
@@ -472,41 +535,29 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Cost Center
+            // Cost Center (zorunlu degil)
             TextFormField(
               controller: _costCenterController,
               readOnly: isViewOnly,
               textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Cost Center',
+              decoration: InputDecoration(
+                labelText: '${l10n?.costCenter ?? 'Cost Center'} (${l10n?.optional ?? 'optional'})',
                 hintText: 'e.g. CC-1001',
-                prefixIcon: Icon(Icons.business_outlined),
+                prefixIcon: const Icon(Icons.business_outlined),
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a cost center';
-                }
-                return null;
-              },
             ),
             const SizedBox(height: 16),
 
-            // Project Code
+            // Project Code (zorunlu degil)
             TextFormField(
               controller: _projectCodeController,
               readOnly: isViewOnly,
               textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Project Code',
+              decoration: InputDecoration(
+                labelText: '${l10n?.projectCode ?? 'Project Code'} (${l10n?.optional ?? 'optional'})',
                 hintText: 'e.g. PRJ-2024-001',
-                prefixIcon: Icon(Icons.folder_outlined),
+                prefixIcon: const Icon(Icons.folder_outlined),
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a project code';
-                }
-                return null;
-              },
             ),
             const SizedBox(height: 16),
 
@@ -516,16 +567,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               readOnly: isViewOnly,
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Description',
+              decoration: InputDecoration(
+                labelText: l10n?.description ?? 'Description',
                 hintText: 'Describe the expense...',
-                prefixIcon: Icon(Icons.description_outlined),
+                prefixIcon: const Icon(Icons.description_outlined),
                 alignLabelWithHint: true,
               ),
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a description';
-                }
+                if (value == null || value.trim().isEmpty) return 'Please enter a description';
                 return null;
               },
             ),
@@ -538,49 +587,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: ListTile(
                   leading: const Icon(Icons.numbers),
-                  title: const Text('SAP Document Number'),
+                  title: Text(l10n?.sapDocNumber ?? 'SAP Document Number'),
                   subtitle: Text(_existingExpense!.sapDocumentNumber!),
                 ),
               ),
 
-            const SizedBox(height: 24),
-
-            // Action buttons
-            if (!isViewOnly) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _saving ? null : _saveDraft,
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Save Draft'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _saving ? null : _submitExpense,
-                      icon: _saving
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.send),
-                      label: const Text('Submit'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 32),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -588,23 +600,24 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   }
 
   Future<void> _confirmDelete() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Expense'),
-        content: const Text(
-            'Are you sure you want to delete this expense? This action cannot be undone.'),
+        title: Text(l10n?.deleteExpense ?? 'Delete Expense'),
+        content: Text(l10n?.deleteExpenseConfirm ??
+            'Are you sure you want to delete this expense?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n?.cancel ?? 'Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: const Text('Delete'),
+            child: Text(l10n?.delete ?? 'Delete'),
           ),
         ],
       ),
@@ -615,8 +628,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         await _api.deleteExpense(_existingExpense!.id);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Expense deleted'),
+            SnackBar(
+              content: Text(l10n?.expenseDeleted ?? 'Expense deleted'),
               behavior: SnackBarBehavior.floating,
             ),
           );

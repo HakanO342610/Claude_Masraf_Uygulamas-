@@ -259,12 +259,16 @@ class ApiService {
     return user;
   }
 
-  Future<Map<String, dynamic>> register(String name, String email, String password) async {
-    final data = await _post('/auth/register', {
+  Future<Map<String, dynamic>> register(String name, String email, String password, {String? department}) async {
+    final body = {
       'name': name,
       'email': email,
       'password': password,
-    }, withAuth: false);
+    };
+    if (department != null && department.isNotEmpty) {
+      body['department'] = department;
+    }
+    final data = await _post('/auth/register', body, withAuth: false);
 
     // Backend handles the JWT generation, BUT it's suspended until approval.
     // It returns: { message: "...", email: "..." }

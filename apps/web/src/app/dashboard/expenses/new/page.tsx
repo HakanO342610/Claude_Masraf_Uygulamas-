@@ -317,7 +317,7 @@ export default function NewExpensePage() {
               <option value="">{t.selectCategory}</option>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
-                  {c}
+                  {(t[`cat_${c.replace(/[&\s]/g, '_')}` as keyof typeof t] || c)}
                 </option>
               ))}
             </select>

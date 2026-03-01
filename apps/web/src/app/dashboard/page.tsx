@@ -61,14 +61,7 @@ export default function DashboardPage() {
     }
   };
 
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const monthlyExpenses = expenses.filter((e) => {
-    const d = new Date(e.expenseDate);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-
-  const { byCurrency: monthlyByCurrency, grandTotalInTRY } = calculateCurrencyTotals(monthlyExpenses);
+  const { byCurrency: monthlyByCurrency, grandTotalInTRY } = calculateCurrencyTotals(expenses);
   const hasMultipleCurrencies = monthlyByCurrency.length > 1;
   const pendingCount = expenses.filter((e) => e.status === 'SUBMITTED').length;
   const approvedCount = expenses.filter((e) => e.status === 'MANAGER_APPROVED' || e.status === 'FINANCE_APPROVED' || e.status === 'POSTED_TO_SAP').length;

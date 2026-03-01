@@ -133,7 +133,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {user && (
             <div className="px-3">
               <p className="text-sm font-medium text-gray-700 truncate dark:text-gray-300">{user.email}</p>
-              <p className="text-xs text-gray-400">{userRole}</p>
+              <p className="text-xs text-gray-400">{t[`role_${userRole}` as keyof typeof t] || userRole}</p>
             </div>
           )}
           <button

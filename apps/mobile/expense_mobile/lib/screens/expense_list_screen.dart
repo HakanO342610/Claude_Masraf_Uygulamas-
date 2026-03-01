@@ -1,8 +1,13 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../models/expense.dart';
 import '../services/api_service.dart';
 import '../widgets/expense_card.dart';
+import '../providers/locale_provider.dart';
+import '../providers/theme_provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class ExpenseListScreen extends StatefulWidget {
   const ExpenseListScreen({super.key});
@@ -19,14 +24,15 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
   String _selectedFilter = 'all';
   bool _isOffline = false;
 
-  final Map<String, String> _filters = {
-    'all': 'All',
-    'DRAFT': 'Draft',
-    'SUBMITTED': 'Submitted',
-    'MANAGER_APPROVED': 'Manager Approved',
-    'FINANCE_APPROVED': 'Finance Approved',
-    'REJECTED': 'Rejected',
-    'POSTED_TO_SAP': 'Posted to SAP',
+  // Filtre etiketleri build() içinde l10n ile doldurulur
+  Map<String, String> _getFilters(AppLocalizations? l10n) => {
+    'all': l10n?.all ?? 'All',
+    'DRAFT': l10n?.draft ?? 'Draft',
+    'SUBMITTED': l10n?.submitted ?? 'Submitted',
+    'MANAGER_APPROVED': l10n?.managerApproved ?? 'Manager Approved',
+    'FINANCE_APPROVED': l10n?.financeApproved ?? 'Finance Approved',
+    'REJECTED': l10n?.rejected ?? 'Rejected',
+    'POSTED_TO_SAP': l10n?.postedToSap ?? 'Posted to SAP',
   };
 
   @override
@@ -57,11 +63,88 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _deleteExpense(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(AppLocalizations.of(context)?.deleteExpense ?? 'Delete Expense'),
+        content: Text(AppLocalizations.of(context)?.deleteExpenseConfirm ?? 'Are you sure you want to delete this expense?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(AppLocalizations.of(context)?.cancel ?? 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            child: Text(AppLocalizations.of(context)?.delete ?? 'Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _api.deleteExpense(id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context)?.expenseDeleted ?? 'Expense deleted')),
+          );
+        }
+        _loadExpenses();
+      } on ApiException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message), backgroundColor: Theme.of(context).colorScheme.error),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
+    final localeProvider = context.watch<LocaleProvider>();
+    final l10n = AppLocalizations.of(context);
+    final filters = _getFilters(l10n);
+
+    // Compute duplicates
+    final counts = <String, int>{};
+    for (var e in _expenses) {
+      final key = '${e.description}_${e.amount}_${DateFormat('yyyy-MM-dd').format(e.expenseDate)}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Expenses'),
+        title: Text(l10n?.expenses ?? 'Expenses'),
+        actions: [
+          TextButton(
+            onPressed: () => localeProvider.toggle(),
+            style: TextButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.language, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  localeProvider.isTurkish ? 'TR' : 'EN',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(themeProvider.themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode),
+            tooltip: themeProvider.themeMode == ThemeMode.dark ? (l10n?.lightMode ?? 'Light Mode') : (l10n?.darkMode ?? 'Dark Mode'),
+            onPressed: () => themeProvider.toggle(),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -72,7 +155,7 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              children: _filters.entries.map((entry) {
+              children: filters.entries.map((entry) {
                 final isSelected = _selectedFilter == entry.key;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -123,7 +206,7 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
                       ? _buildErrorView()
                       : _expenses.isEmpty
                           ? _buildEmptyView()
-                          : _buildExpenseList(),
+                          : _buildExpenseList(counts),
             ),
           ),
         ],
@@ -161,6 +244,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
   }
 
   Widget _buildEmptyView() {
+    final l10n = AppLocalizations.of(context);
+    final filters = _getFilters(l10n);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -172,8 +257,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
             const SizedBox(height: 16),
             Text(
               _selectedFilter == 'all'
-                  ? 'No expenses found'
-                  : 'No ${_filters[_selectedFilter]} expenses',
+                  ? (l10n?.noData ?? 'No expenses found')
+                  : 'No ${filters[_selectedFilter]} expenses',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
@@ -189,20 +274,26 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
     );
   }
 
-  Widget _buildExpenseList() {
+  Widget _buildExpenseList(Map<String, int> counts) {
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: _expenses.length,
       itemBuilder: (context, index) {
+        final expense = _expenses[index];
+        final key = '${expense.description}_${expense.amount}_${DateFormat('yyyy-MM-dd').format(expense.expenseDate)}';
+        final isDuplicate = (counts[key] ?? 0) > 1;
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: ExpenseCard(
-            expense: _expenses[index],
+            expense: expense,
+            isDuplicate: isDuplicate,
+            onDelete: (expense.isDraft || expense.isSubmitted || expense.isRejected) ? () => _deleteExpense(expense.id) : null,
             onTap: () async {
               final result = await Navigator.of(context).pushNamed(
                 '/expenses/edit',
-                arguments: _expenses[index],
+                arguments: expense,
               );
               if (result == true) _loadExpenses();
             },
