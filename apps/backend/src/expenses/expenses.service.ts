@@ -122,7 +122,7 @@ export class ExpensesService {
     const expense = await this.prisma.expense.findUnique({ where: { id } });
     if (!expense) throw new NotFoundException('Expense not found');
     if (expense.userId !== userId) throw new ForbiddenException();
-    const deletableStatuses = [ExpenseStatus.DRAFT, ExpenseStatus.SUBMITTED, ExpenseStatus.REJECTED];
+    const deletableStatuses: ExpenseStatus[] = [ExpenseStatus.DRAFT, ExpenseStatus.SUBMITTED, ExpenseStatus.REJECTED];
     if (!deletableStatuses.includes(expense.status as ExpenseStatus)) {
       throw new BadRequestException('Yalnızca taslak, gönderilmiş veya reddedilmiş masraflar silinebilir.');
     }
