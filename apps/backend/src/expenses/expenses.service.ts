@@ -3,48 +3,43 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { PolicyService } from '../policy/policy.service';
+import { SapIntegrationService } from '../sap-integration/sap-integration.service';
+import { SapQueueService } from '../sap-integration/sap-queue.service';
 import { CreateExpenseDto, UpdateExpenseDto } from './dto/create-expense.dto';
 import { ExpenseStatus } from '@prisma/client';
 
 @Injectable()
 export class ExpensesService {
+  private readonly logger = new Logger(ExpensesService.name);
+
   constructor(
     private prisma: PrismaService,
     private push: PushService,
     private policy: PolicyService,
+    private sapService: SapIntegrationService,
+    private sapQueue: SapQueueService,
   ) {}
 
   async create(userId: string, dto: CreateExpenseDto) {
-    // --- Mükerrer giriş kontrolü ---
-    const expenseDate = new Date(dto.expenseDate);
-    const startOfDay = new Date(expenseDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(expenseDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const duplicate = await this.prisma.expense.findFirst({
-      where: {
-        userId,
-        amount: dto.amount,
-        description: dto.description,
-        expenseDate: { gte: startOfDay, lte: endOfDay },
-      },
+    // --- Fiş/Fatura no mükerrer kontrolü (zorunlu alan) ---
+    const existing = await this.prisma.expense.findUnique({
+      where: { receiptNumber: dto.receiptNumber },
     });
-
-    if (duplicate) {
+    if (existing) {
       throw new BadRequestException(
-        'Bu tarih, tutar ve açıklama ile zaten bir masraf kaydı mevcut. Mükerrer giriş yapılamaz.',
+        `Bu fiş/fatura numarası (${dto.receiptNumber}) ile zaten bir masraf kaydı mevcut. Mükerrer giriş yapılamaz.`,
       );
     }
 
     return this.prisma.expense.create({
       data: {
         userId,
-        expenseDate,
+        expenseDate: new Date(dto.expenseDate),
         amount: dto.amount,
         currency: dto.currency || 'TRY',
         taxAmount: dto.taxAmount,
@@ -52,6 +47,7 @@ export class ExpensesService {
         projectCode: dto.projectCode,
         costCenter: dto.costCenter,
         description: dto.description,
+        receiptNumber: dto.receiptNumber,
       },
       include: { user: { select: { name: true, email: true } } },
     });
@@ -77,7 +73,101 @@ export class ExpensesService {
     });
   }
 
-  async findById(id: string, userId: string) {
+  // ─── FINANCE / ADMIN: Tüm masrafları SAP durum bilgisiyle listele ──────
+  async findAllAdmin(query: { status?: string; fromDate?: string; toDate?: string }) {
+    const where: any = {};
+    if (query.status) where.status = query.status as ExpenseStatus;
+    if (query.fromDate || query.toDate) {
+      where.expenseDate = {};
+      if (query.fromDate) where.expenseDate.gte = new Date(query.fromDate);
+      if (query.toDate) where.expenseDate.lte = new Date(query.toDate);
+    }
+
+    const expenses = await this.prisma.expense.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { name: true, email: true, department: true } },
+        approvals: {
+          include: { approver: { select: { name: true } } },
+        },
+      },
+    });
+
+    // SAP durumu batch hesapla — N+1 sorgusu yerine tek sorguda
+    const expenseIds = expenses.map((e) => e.id);
+    const sapFailLogs = await this.prisma.auditLog.findMany({
+      where: { expenseId: { in: expenseIds }, action: 'SAP_POST_FAILED' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const sapSuccessLogs = await this.prisma.auditLog.findMany({
+      where: { expenseId: { in: expenseIds }, action: 'POSTED_TO_SAP' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const failMap = new Map(sapFailLogs.map((l) => [l.expenseId, l.details]));
+    const successMap = new Map(sapSuccessLogs.map((l) => [l.expenseId, l.details]));
+
+    return expenses.map((e) => {
+      let sapStatus: string;
+      if (e.status === ExpenseStatus.POSTED_TO_SAP) {
+        sapStatus = 'OK';
+      } else if (
+        (e.status === ExpenseStatus.FINANCE_APPROVED ||
+         e.status === ExpenseStatus.MANAGER_APPROVED) &&
+        failMap.has(e.id)
+      ) {
+        sapStatus = 'FAILED';
+      } else if (e.status === ExpenseStatus.FINANCE_APPROVED && !e.sapDocumentNumber) {
+        sapStatus = 'PENDING';
+      } else {
+        sapStatus = 'NOT_APPLICABLE';
+      }
+      return {
+        ...e,
+        sapStatus,
+        sapPostError: failMap.get(e.id) || null,
+        sapPostSuccess: successMap.get(e.id) || null,
+      };
+    });
+  }
+
+  // ─── Fiş/Fatura No ile arama (Swagger debug için) ────────────────────────
+  async findByReceiptNumber(receiptNumber: string) {
+    const expense = await this.prisma.expense.findUnique({
+      where: { receiptNumber },
+      include: {
+        user: { select: { name: true, email: true, department: true } },
+        approvals: {
+          include: { approver: { select: { name: true, email: true } } },
+        },
+      },
+    });
+    if (!expense) throw new NotFoundException(`receiptNumber=${receiptNumber} ile masraf bulunamadı`);
+
+    const sapFailLog = await this.prisma.auditLog.findFirst({
+      where: { expenseId: expense.id, action: 'SAP_POST_FAILED' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const sapSuccessLog = await this.prisma.auditLog.findFirst({
+      where: { expenseId: expense.id, action: 'POSTED_TO_SAP' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let sapStatus: string;
+    if (expense.status === ExpenseStatus.POSTED_TO_SAP) sapStatus = 'OK';
+    else if (sapFailLog) sapStatus = 'FAILED';
+    else if (expense.status === ExpenseStatus.FINANCE_APPROVED) sapStatus = 'PENDING';
+    else sapStatus = 'NOT_APPLICABLE';
+
+    return {
+      ...expense,
+      sapStatus,
+      sapPostError: sapFailLog?.details || null,
+      sapPostSuccess: sapSuccessLog?.details || null,
+    };
+  }
+
+  async findById(id: string, userId: string, userRole?: string) {
     const expense = await this.prisma.expense.findUnique({
       where: { id },
       include: {
@@ -89,14 +179,37 @@ export class ExpensesService {
     });
     if (!expense) throw new NotFoundException('Expense not found');
 
-    if (expense.userId !== userId) {
+    // ADMIN, FINANCE, MANAGER her masrafı görebilir
+    const elevatedRoles = ['ADMIN', 'FINANCE', 'MANAGER'];
+    if (expense.userId !== userId && !elevatedRoles.includes(userRole || '')) {
       const hasApproval = expense.approvals.some(
         (a) => a.approverId === userId,
       );
       if (!hasApproval) throw new ForbiddenException('Access denied');
     }
 
-    return expense;
+    // SAP post hata/başarı loglarını çek
+    const sapFailLog = await this.prisma.auditLog.findFirst({
+      where: { expenseId: id, action: 'SAP_POST_FAILED' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const sapSuccessLog = await this.prisma.auditLog.findFirst({
+      where: { expenseId: id, action: 'POSTED_TO_SAP' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let sapStatus: string;
+    if (expense.status === ExpenseStatus.POSTED_TO_SAP) sapStatus = 'OK';
+    else if (sapFailLog) sapStatus = 'FAILED';
+    else if (expense.status === ExpenseStatus.FINANCE_APPROVED) sapStatus = 'PENDING';
+    else sapStatus = 'NOT_APPLICABLE';
+
+    return {
+      ...expense,
+      sapStatus,
+      sapPostError: sapFailLog?.details || null,
+      sapPostSuccess: sapSuccessLog?.details || null,
+    };
   }
 
   async update(id: string, userId: string, dto: UpdateExpenseDto) {
@@ -108,6 +221,7 @@ export class ExpensesService {
     }
 
     const updateData: any = { ...dto };
+    delete updateData.receiptNumber;  // Fiş/fatura no kaydedildikten sonra değiştirilemez
     if (updateData.expenseDate) {
       updateData.expenseDate = new Date(updateData.expenseDate);
     }
@@ -255,6 +369,16 @@ export class ExpensesService {
       }
     }
 
+    // ─── Finance onayında SAP kuyruğuna ekle (asenkron) ─────────────────────
+    if (newStatus === ExpenseStatus.FINANCE_APPROVED) {
+      this.logger.log(`Finance approved — enqueueing expense ${id} for SAP posting`);
+      this.sapQueue.enqueue(id).then(() => {
+        this.logger.log(`Expense ${id} enqueued for SAP posting`);
+      }).catch((err) => {
+        this.logger.error(`Failed to enqueue expense ${id}: ${err.message}`);
+      });
+    }
+
     return updated;
   }
 
@@ -300,7 +424,7 @@ export class ExpensesService {
           include: { user: { select: { name: true, email: true, department: true } } },
         },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

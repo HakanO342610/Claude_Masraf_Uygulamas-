@@ -8,6 +8,7 @@ export interface SapExpensePayload {
   costCenter: string | null;
   projectCode: string | null;
   description: string | null;
+  receiptNumber: string | null;
   reference: string;
   user: {
     sapEmployeeId: string | null;
@@ -18,6 +19,7 @@ export interface SapExpensePayload {
 
 export interface SapPostResult {
   sapDocumentNumber: string;
+  fiscalYear?: string;
   status: 'Posted' | 'Simulated';
   rawResponse?: any;
 }

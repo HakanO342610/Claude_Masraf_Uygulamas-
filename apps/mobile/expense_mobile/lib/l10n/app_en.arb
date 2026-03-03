@@ -143,5 +143,23 @@
     "placeholders": {
       "count": { "type": "int" }
     }
-  }
+  },
+  "sapStatus": "SAP Status",
+  "sapOk": "SAP OK",
+  "sapFailed": "SAP Failed",
+  "sapPending": "SAP Pending",
+  "sapNotApplicable": "N/A",
+  "sapPostingPanel": "SAP Posting",
+  "sapDocumentNumber": "SAP Document Number",
+  "sapErrorDetails": "Error Details",
+  "sapSuccessDetails": "Success Details",
+  "sapRetrySend": "Retry SAP",
+  "sapDebugSend": "Debug",
+  "sapRetrying": "Retrying...",
+  "sapRetrySuccess": "SAP posting successful!",
+  "sapRetryFailed": "SAP posting failed",
+  "allExpenses": "All Expenses",
+  "myExpenses": "My Expenses",
+  "employee": "Employee",
+  "receiptNo": "Receipt No"
 }

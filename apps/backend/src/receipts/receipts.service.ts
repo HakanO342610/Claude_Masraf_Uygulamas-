@@ -139,10 +139,12 @@ JSON fields:
   "amount": total amount as number (e.g. 549.81) — this MUST be the FINAL total amount at the bottom of the receipt (usually labelled TOPLAM, T.TOPLAM, or GENEL TOPLAM). DO NOT use the price of individual items.,
   "taxAmount": KDV/VAT amount as number (e.g. 32.39) — look for TOPKDV or KDV or TOPLAM KDV line, or null,
   "currency": "3-letter ISO code: TRY, USD, EUR, GBP, CHF — default TRY if not visible",
-  "category": "one of exactly: Travel, Accommodation, Meals, Transportation, Office, Other"
+  "category": "one of exactly: Travel, Accommodation, Meals, Transportation, Office, Other",
+  "receiptNumber": "receipt or invoice number (Fiş No, Fatura No, Belge No, Document No, Receipt No) — extract the numeric or alphanumeric ID, or null if not visible"
 }
 IMPORTANT: The amount field on Turkish receipts often has a * prefix like *27.50 — ignore the * and extract only the number. Ensure the amount is the HIGHEST total value at the bottom (TOPLAM).
-For vendor: use the company/store name at the top of the receipt (e.g. MIGROS TICARET A.S.).`;
+For vendor: use the company/store name at the top of the receipt (e.g. MIGROS TICARET A.S.).
+For receiptNumber: look for labels like FİŞ NO, BELGE NO, FATURA NO, EFT NO, or a standalone numeric ID near the top of the receipt.`;
 
       const result = await model.generateContent([
         prompt,
@@ -168,6 +170,7 @@ For vendor: use the company/store name at the top of the receipt (e.g. MIGROS TI
         extractedTaxAmount: parseAmount(parsed.taxAmount),
         extractedCategory: parsed.category ?? null,
         currency: parsed.currency ?? 'TRY',
+        receiptNumber: parsed.receiptNumber ? String(parsed.receiptNumber).trim() : null,
         confidence: 99,
         rawText: responseText,
         ocrEngine: 'gemini-2.0-flash',
@@ -195,6 +198,7 @@ For vendor: use the company/store name at the top of the receipt (e.g. MIGROS TI
       let extractedTaxAmount: number | null = null;
       let extractedDate: string | null = null;
       let extractedVendor: string | null = null;
+      let receiptNumber: string | null = null;
       let currency = 'TRY';
 
       const lines = text
@@ -247,6 +251,16 @@ For vendor: use the company/store name at the top of the receipt (e.g. MIGROS TI
         const m = line.match(dateRegex);
         if (m) {
           extractedDate = `${m[3]}-${m[2]}-${m[1]}`;
+          break;
+        }
+      }
+
+      // --- Fiş / Fatura No (Belge No, FİŞ NO, EFT NO vb.) ---
+      const receiptNoRegex = /(?:fi[sş]\s*no|belge\s*no|fatura\s*no|eft\s*no|receipt\s*no|doc(?:ument)?\s*no)[:\s#]*([A-Z0-9\-]{4,20})/i;
+      for (const line of lines) {
+        const m = line.match(receiptNoRegex);
+        if (m) {
+          receiptNumber = m[1].trim();
           break;
         }
       }
@@ -371,6 +385,7 @@ For vendor: use the company/store name at the top of the receipt (e.g. MIGROS TI
         extractedVendor,
         extractedCategory,
         currency,
+        receiptNumber,
         confidence,
         rawText: text,
         ocrEngine: 'tesseract',

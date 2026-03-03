@@ -44,6 +44,7 @@ model Expense {
   projectCode       String?           @map("project_code")
   costCenter        String?           @map("cost_center")
   description       String?
+  receiptNumber     String?           @unique @map("receipt_number")
   status            ExpenseStatus     @default(DRAFT)
   sapDocumentNumber String?           @map("sap_document_number")
   receiptUrl        String?           @map("receipt_url")

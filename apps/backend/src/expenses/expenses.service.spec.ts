@@ -68,6 +68,7 @@ describe('ExpensesService', () => {
         amount: 500,
         category: 'Travel',
         description: 'Business trip',
+        receiptNumber: 'TEST-001',
       };
       const expected = { id: '1', userId: 'user1', ...dto, status: 'DRAFT' };
       mockPrisma.expense.findFirst.mockResolvedValue(null); // no duplicate

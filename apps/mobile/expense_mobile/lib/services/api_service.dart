@@ -108,13 +108,18 @@ class ApiService {
     }
 
     if (response.statusCode == 401) {
-      // Try to refresh the token before giving up
-      final refreshed = await _tryRefreshToken();
-      if (refreshed) {
-        throw ApiException('TOKEN_REFRESHED', statusCode: 401);
+      // Sadece oturum açık isteklerde token yenilemeyi dene.
+      // Token yoksa (login/register gibi) → backend'in gerçek hata mesajını göster.
+      if (_token != null) {
+        final refreshed = await _tryRefreshToken();
+        if (refreshed) {
+          throw ApiException('TOKEN_REFRESHED', statusCode: 401);
+        }
+        clearAuth();
+        throw ApiException('Session expired. Please log in again.',
+            statusCode: 401);
       }
-      clearAuth();
-      throw ApiException('Session expired. Please log in again.', statusCode: 401);
+      throw ApiException(message, statusCode: 401);
     }
 
     throw ApiException(message, statusCode: response.statusCode);
@@ -235,13 +240,20 @@ class ApiService {
     }
   }
 
+  /// Uygulama açılışında çağrılır. Refresh token geçerliyse access token'ı yeniler.
+  /// true → yenilendi, false → refresh token da geçersiz (login gerekli).
+  Future<bool> refreshSession() => _tryRefreshToken();
+
   // ---------- Auth Endpoints ----------
 
   Future<User> login(String email, String password) async {
-    final data = await _post('/auth/login', {
-      'email': email,
-      'password': password,
-    }, withAuth: false);
+    final data = await _post(
+        '/auth/login',
+        {
+          'email': email,
+          'password': password,
+        },
+        withAuth: false);
 
     final token = data['accessToken'] ?? data['access_token'] ?? data['token'];
     if (token == null) {
@@ -259,7 +271,9 @@ class ApiService {
     return user;
   }
 
-  Future<Map<String, dynamic>> register(String name, String email, String password, {String? department}) async {
+  Future<Map<String, dynamic>> register(
+      String name, String email, String password,
+      {String? department}) async {
     final body = {
       'name': name,
       'email': email,
@@ -296,26 +310,31 @@ class ApiService {
 
   Future<User> updateUserRole(String id, String role) async {
     final data = await _patch('/users/$id/role', {'role': role});
-    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return User.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   Future<User> assignManager(String id, String managerId) async {
     final data = await _patch('/users/$id/manager', {'managerId': managerId});
-    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return User.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   Future<User> approveUser(String id) async {
     final data = await _patch('/users/$id/approve', {});
-    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return User.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
-  Future<User> updateUser(String id, {String? name, String? email, String? department}) async {
+  Future<User> updateUser(String id,
+      {String? name, String? email, String? department}) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
     if (email != null) body['email'] = email;
     if (department != null) body['department'] = department;
     final data = await _patch('/users/$id', body);
-    return User.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return User.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   Future<void> deleteUser(String id) async {
@@ -324,12 +343,15 @@ class ApiService {
 
   // ---------- Expense Endpoints ----------
 
-  Future<bool> _isOnline() async {
+  Future<bool> isOnline() async {
     final result = await Connectivity().checkConnectivity();
     return result.any((r) => r != ConnectivityResult.none);
   }
 
-  Future<List<Expense>> getExpenses({String? status, int page = 1, int limit = 20}) async {
+  Future<bool> _isOnline() => isOnline();
+
+  Future<List<Expense>> getExpenses(
+      {String? status, int page = 1, int limit = 20}) async {
     final online = await _isOnline();
     final cache = LocalStorageService();
 
@@ -341,7 +363,8 @@ class ApiService {
         }
         return cached;
       }
-      throw ApiException('No internet connection and no cached data available.');
+      throw ApiException(
+          'No internet connection and no cached data available.');
     }
 
     String path = '/expenses?page=$page&limit=$limit';
@@ -396,17 +419,21 @@ class ApiService {
 
   Future<Expense> getExpense(String id) async {
     final data = await _get('/expenses/$id');
-    return Expense.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return Expense.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   Future<Expense> createExpense(Map<String, dynamic> expenseData) async {
     final data = await _post('/expenses', expenseData);
-    return Expense.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return Expense.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
-  Future<Expense> updateExpense(String id, Map<String, dynamic> expenseData) async {
+  Future<Expense> updateExpense(
+      String id, Map<String, dynamic> expenseData) async {
     final data = await _patch('/expenses/$id', expenseData);
-    return Expense.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return Expense.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   Future<void> deleteExpense(String id) async {
@@ -415,19 +442,22 @@ class ApiService {
 
   Future<Expense> submitExpense(String id) async {
     final data = await _patch('/expenses/$id/submit', {});
-    return Expense.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return Expense.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   Future<Expense> approveExpense(String id) async {
     final data = await _patch('/expenses/$id/approve', {});
-    return Expense.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return Expense.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   Future<Expense> rejectExpense(String id, {String? reason}) async {
     final body = <String, dynamic>{};
     if (reason != null) body['comment'] = reason;
     final data = await _patch('/expenses/$id/reject', body);
-    return Expense.fromJson(data is Map && data.containsKey('data') ? data['data'] : data);
+    return Expense.fromJson(
+        data is Map && data.containsKey('data') ? data['data'] : data);
   }
 
   // ---------- Dashboard / Summary ----------
@@ -443,7 +473,8 @@ class ApiService {
 
   // ---------- Reports Endpoints ----------
 
-  Future<Map<String, dynamic>> getReportSummary({String? from, String? to}) async {
+  Future<Map<String, dynamic>> getReportSummary(
+      {String? from, String? to}) async {
     String path = '/reports/summary';
     final params = <String>[];
     if (from != null) params.add('from=$from');
@@ -454,7 +485,8 @@ class ApiService {
     return data is Map<String, dynamic> ? data : {};
   }
 
-  Future<List<Map<String, dynamic>>> getReportByCategory({String? from, String? to}) async {
+  Future<List<Map<String, dynamic>>> getReportByCategory(
+      {String? from, String? to}) async {
     String path = '/reports/by-category';
     final params = <String>[];
     if (from != null) params.add('from=$from');
@@ -466,7 +498,8 @@ class ApiService {
     return [];
   }
 
-  Future<List<Map<String, dynamic>>> getReportByDepartment({String? from, String? to}) async {
+  Future<List<Map<String, dynamic>>> getReportByDepartment(
+      {String? from, String? to}) async {
     String path = '/reports/by-department';
     final params = <String>[];
     if (from != null) params.add('from=$from');
@@ -499,19 +532,21 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/receipts/upload');
     final request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer $_token';
-    
+
     final bytes = await file.readAsBytes();
     final mimeType = file.mimeType ?? 'image/jpeg';
     final typeData = mimeType.split('/');
-    
+
     request.files.add(http.MultipartFile.fromBytes(
       'file',
       bytes,
       filename: file.name,
-      contentType: MediaType(typeData[0], typeData.length > 1 ? typeData[1] : 'jpeg'),
+      contentType:
+          MediaType(typeData[0], typeData.length > 1 ? typeData[1] : 'jpeg'),
     ));
 
-    final streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+    final streamedResponse =
+        await request.send().timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -520,8 +555,55 @@ class ApiService {
     throw ApiException('Upload failed', statusCode: response.statusCode);
   }
 
-  Future<void> attachReceiptToExpense(String receiptId, String expenseId) async {
+  Future<void> attachReceiptToExpense(
+      String receiptId, String expenseId) async {
     await _patch('/receipts/$receiptId/attach-to-expense/$expenseId', {});
+  }
+
+  // ---------- SAP Integration Endpoints ----------
+
+  /// FINANCE/ADMIN: Tüm masrafları SAP durumu ile birlikte getir
+  Future<List<Expense>> getAllAdminExpenses(
+      {int page = 1, int limit = 50}) async {
+    final data = await _get('/expenses/all?page=$page&limit=$limit');
+
+    List<dynamic> items;
+    if (data is List) {
+      items = data;
+    } else if (data is Map && data.containsKey('data')) {
+      items = data['data'] as List;
+    } else if (data is Map && data.containsKey('items')) {
+      items = data['items'] as List;
+    } else {
+      items = [];
+    }
+
+    return items.map((json) => Expense.fromJson(json)).toList();
+  }
+
+  /// Fiş numarasına göre masraf ara (FINANCE/ADMIN)
+  Future<Expense?> getByReceiptNumber(String receiptNumber) async {
+    try {
+      final data = await _get('/expenses/by-receipt/$receiptNumber');
+      if (data == null) return null;
+      return Expense.fromJson(
+          data is Map && data.containsKey('data') ? data['data'] : data);
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// SAP'a yeniden gönder (FINANCE/ADMIN)
+  Future<Map<String, dynamic>> retrySapPost(String expenseId) async {
+    final data = await _post('/expenses/$expenseId/retry-sap', {});
+    return data is Map<String, dynamic> ? data : {};
+  }
+
+  /// SAP debug — DB'ye yazmadan ham SAP yanıtını döndürür
+  Future<Map<String, dynamic>> debugSapPost(String expenseId) async {
+    final data = await _post('/expenses/$expenseId/debug-sap', {});
+    return data is Map<String, dynamic> ? data : {};
   }
 
   Future<void> updateFcmToken(String fcmToken) async {

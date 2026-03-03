@@ -114,7 +114,10 @@ export const authApi = {
 export const expenseApi = {
   getAll: (params?: { status?: string; fromDate?: string; toDate?: string }) =>
     api.get('/expenses', { params }),
+  getAllAdmin: (params?: { status?: string; fromDate?: string; toDate?: string }) =>
+    api.get('/expenses/all', { params }),
   getById: (id: string) => api.get(`/expenses/${id}`),
+  getByReceipt: (receiptNumber: string) => api.get(`/expenses/by-receipt/${receiptNumber}`),
   create: (data: any) => api.post('/expenses', data),
   update: (id: string, data: any) => api.patch(`/expenses/${id}`, data),
   delete: (id: string) => api.delete(`/expenses/${id}`),
@@ -124,6 +127,8 @@ export const expenseApi = {
   reject: (id: string, comment: string) =>
     api.patch(`/expenses/${id}/reject`, { comment }),
   getPendingApprovals: () => api.get('/expenses/pending-approvals'),
+  retrySap: (id: string) => api.post(`/expenses/${id}/retry-sap`),
+  debugSap: (id: string) => api.post(`/expenses/${id}/debug-sap`),
 };
 
 export const reportsApi = {
@@ -169,6 +174,8 @@ export const sapApi = {
   retryQueueItem: (id: string) => api.post(`/integration/sap/queue/${id}/retry`),
   getMasterData: (type: string) => api.get('/integration/sap/master-data', { params: { type } }),
   syncMasterData: () => api.post('/integration/sap/sync'),
+  testConnection: () => api.get('/integration/sap/test-connection'),
+  debugRawPost: (id: string) => api.post(`/integration/sap/debug-raw/${id}`),
 };
 
 export default api;

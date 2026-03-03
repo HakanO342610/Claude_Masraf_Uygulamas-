@@ -75,26 +75,51 @@ export class SapEccAdapter implements ISapAdapter {
   // Response: { TYPE, MSG_CODE (belge no), MESSAGE, DOCUMENT_NUMBER, FISCAL_YEAR }
 
   async postExpense(payload: SapExpensePayload): Promise<SapPostResult> {
-    // ZCL_MASRAFF → POST_EXPENSE methodunun beklediği JSON
-    const body = {
+    // KDV ayrıştırma: Matrah = Brüt - KDV
+    const grossAmount  = +payload.amount.toFixed(2);
+    const taxAmount    = +payload.taxAmount.toFixed(2);
+    const netAmount    = +(grossAmount - taxAmount).toFixed(2);  // Matrah (gider GL)
+    // TR KDV: Temmuz 2023'ten itibaren %20. SAP vergi kodu env ile override edilebilir.
+    const taxGlAccount = this.config.get('SAP_TAX_GL_ACCOUNT') || '1910001018';
+    const taxCode      = this.config.get('SAP_TAX_CODE')        || 'V3';  // V3=%20 olarak SAP'ta güncelleyin
+
+    // ZCL_MASRAFF → POST_EXPENSE — Gerçek SAP belge yapısı (örnek belgeye göre):
+    //   Klm 1 (40/Borç):  GlAccount    ← NetAmount  (Matrah — Araç Yakıt Giderleri vb.)
+    //   Klm 2 (50/Alacak): 3350001001  ← GrossAmount (Personele Ödenecek — Brüt)
+    //   Klm 3 (40/Borç):  TaxGlAccount ← TaxAmount  (%18 İndirilecek KDV, 1910001018)
+    const body: Record<string, any> = {
       CompanyCode:  this.companyCode,
       EmployeeId:   payload.user.sapEmployeeId || '',
       EmployeeName: payload.user.name,
-      ExpenseDate:  payload.expenseDate.toISOString().split('T')[0].replace(/-/g, ''),  // YYYYMMDD
-      PostingDate:  new Date().toISOString().split('T')[0].replace(/-/g, ''),           // YYYYMMDD
+      ExpenseDate:  payload.expenseDate.toISOString().split('T')[0].replace(/-/g, ''),
+      PostingDate:  new Date().toISOString().split('T')[0].replace(/-/g, ''),
       DocumentType: 'SA',
-      Amount:       payload.amount,
-      TaxAmount:    payload.taxAmount,
+      NetAmount:    netAmount,      // Matrah → Klm 1 Gider GL (Borç)
+      TaxAmount:    taxAmount,      // KDV   → Klm 3 İndirilecek KDV GL (Borç)
+      GrossAmount:  grossAmount,    // Brüt  → Klm 2 Personele Ödenecek (Alacak)
+      Amount:       grossAmount,    // Geriye dönük uyumluluk
+      TaxCode:      taxCode,        // V3 — %18 KDV vergi kodu (env: SAP_TAX_CODE)
+      TaxGlAccount: taxGlAccount,   // 1910001018 — İndirilecek KDV (env: SAP_TAX_GL_ACCOUNT)
       Currency:     payload.currency,
       GlAccount:    GL_ACCOUNT_MAP[payload.category] || '7604001001',
-      CostCenter:   (payload.costCenter || '').replace(/^CC-/i, ''),  // CC-1002 → 1002
+      CostCenter:   ((payload.costCenter || '').replace(/^CC-/i, '')).padStart(10, '0'),  // SAP KOSTL CHAR(10) — leading zero pad
       ProjectCode:  payload.projectCode || '',
       Description:  (payload.description || '').substring(0, 50),
-      Reference:    payload.reference,  // EXP-XXXXXXXX
+      Reference:    payload.receiptNumber || payload.reference,  // Fiş/Fatura no öncelikli
+      FisNo:        payload.receiptNumber || '',  // ZCL_MASRAFF POST_EXPENSE — fiş/fatura no alanı
     };
 
+    // Retry/Debug flag'leri — SAP tarafında tekrarlı log'u ve commit'i kontrol etmek için
+    // RetryAttempt > 1 ise ABAP log atmasın, DebugMode = 'X' ise BAPI_TRANSACTION_COMMIT çağırmasın
+    if ((payload as any).retryAttempt) {
+      body.RetryAttempt = (payload as any).retryAttempt;
+    }
+    if ((payload as any).debugMode) {
+      body.DebugMode = 'X';
+    }
+
     this.logger.log(`[ECC/Masraffco] POST ${this.expensePath} — ref: ${body.Reference}`);
-    this.logger.debug(`[ECC/Masraffco] Payload: ${JSON.stringify(body)}`);
+    this.logger.log(`[ECC/Masraffco] Payload: ${JSON.stringify(body)}`);
 
     let response: any;
     try {
@@ -106,22 +131,71 @@ export class SapEccAdapter implements ISapAdapter {
     }
     const data = response.data as Record<string, any>;
 
-    this.logger.debug(`[ECC/Masraffco] Response: ${JSON.stringify(data)}`);
+    // LOG seviyesi — terminalde her zaman görünsün
+    this.logger.log(`[ECC/Masraffco] RAW RESPONSE: ${JSON.stringify(data)}`);
 
     // ZCL_MASRAFF hata kontrolü: TYPE='E' ve MSG_CODE != '1'
     if (data?.TYPE === 'E' && data?.MSG_CODE !== '1') {
-      throw new Error(`SAP FI Hatası: ${data.MESSAGE || 'Bilinmeyen hata'}`);
+      throw new Error(
+        `SAP FI Hatası — TYPE:${data.TYPE} | MSG_CODE:${data.MSG_CODE} | ${data.MESSAGE || 'Bilinmeyen hata'}`,
+      );
     }
 
-    // Belge numarası: DOCUMENT_NUMBER veya MSG_CODE alanında döner
-    const docNumber =
+    // Belge numarası: DOCUMENT_NUMBER öncelikli, yoksa MSG_CODE
+    const rawDocNumber =
       data?.DOCUMENT_NUMBER ||
       data?.DocumentNumber  ||
-      data?.MSG_CODE        ||
-      `ECC-${Date.now()}`;
+      data?.MSG_CODE;
+
+    // Geçerli belge no kontrolü: en az 5 karakter, sayısal/alfanümerik, "$" veya boş değil
+    const isValidDocNumber =
+      rawDocNumber &&
+      String(rawDocNumber).trim().length >= 5 &&
+      /^[A-Z0-9\-]+$/i.test(String(rawDocNumber).trim());
+
+    // ─── TYPE=S (başarılı) ama belge numarası geçersiz/placeholder ($) ise ───
+    // SAP belgeyi oluşturdu ancak ZCL_MASRAFF doc number'ı düzgün dönmüyor.
+    // Bu durumda başarılı kabul et — fallback doc number ile kaydet.
+    if (!isValidDocNumber) {
+      const isSuccessResponse =
+        data?.TYPE === 'S' ||
+        (data?.MESSAGE && String(data.MESSAGE).toUpperCase().includes('OK'));
+
+      if (isSuccessResponse) {
+        const fallbackDocNumber = `SAP-OK-${Date.now()}`;
+        this.logger.warn(
+          `[ECC/Masraffco] TYPE=S ama belge no geçersiz ("${rawDocNumber}"). Fallback: ${fallbackDocNumber}. Ham yanıt: ${JSON.stringify(data)}`,
+        );
+        return {
+          sapDocumentNumber: fallbackDocNumber,
+          fiscalYear: undefined,
+          status: 'Posted',
+          rawResponse: data,
+        };
+      }
+
+      // TYPE != S → gerçek hata
+      throw new Error(
+        `SAP geçersiz belge numarası döndü: "${rawDocNumber}" | TYPE:${data?.TYPE} | MSG:${data?.MESSAGE || '-'} | Ham yanıt: ${JSON.stringify(data)}`,
+      );
+    }
+
+    const docNumber = String(rawDocNumber).trim();
+
+    // Mali yıl: FISCAL_YEAR alanında döner (opsiyonel)
+    const fiscalYear = data?.FISCAL_YEAR
+      ? String(data.FISCAL_YEAR).trim()
+      : undefined;
+
+    if (fiscalYear === '0000' || fiscalYear === '') {
+      this.logger.warn(
+        `[ECC/Masraffco] FISCAL_YEAR geçersiz (${fiscalYear}) — belge: ${docNumber}`,
+      );
+    }
 
     return {
-      sapDocumentNumber: String(docNumber),
+      sapDocumentNumber: docNumber,
+      fiscalYear,
       status: 'Posted',
       rawResponse: data,
     };

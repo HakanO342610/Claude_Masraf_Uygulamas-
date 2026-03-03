@@ -9,65 +9,67 @@ async function main() {
   // Create users
   const hashedPassword = await bcrypt.hash('password123', 10);
 
+  const seedUserBase = { password: hashedPassword, isEmailConfirmed: true, isApproved: true };
+
   const admin = await prisma.user.upsert({
     where: { email: 'admin@company.com' },
-    update: {},
+    update: { ...seedUserBase },
     create: {
       name: 'Admin User',
       email: 'admin@company.com',
-      password: hashedPassword,
       department: 'IT',
       role: UserRole.ADMIN,
+      ...seedUserBase,
     },
   });
 
   const finance = await prisma.user.upsert({
     where: { email: 'finance@company.com' },
-    update: {},
+    update: { ...seedUserBase },
     create: {
       name: 'Finance User',
       email: 'finance@company.com',
-      password: hashedPassword,
       department: 'Finance',
       role: UserRole.FINANCE,
+      ...seedUserBase,
     },
   });
 
   const manager = await prisma.user.upsert({
     where: { email: 'manager@company.com' },
-    update: {},
+    update: { ...seedUserBase },
     create: {
       name: 'Manager User',
       email: 'manager@company.com',
-      password: hashedPassword,
       department: 'Engineering',
       role: UserRole.MANAGER,
+      ...seedUserBase,
     },
   });
 
   const employee = await prisma.user.upsert({
     where: { email: 'employee@company.com' },
-    update: {},
+    update: { ...seedUserBase },
     create: {
       name: 'Employee User',
       email: 'employee@company.com',
-      password: hashedPassword,
       department: 'Engineering',
       role: UserRole.EMPLOYEE,
       managerId: manager.id,
+      ...seedUserBase,
     },
   });
 
   const employee2 = await prisma.user.upsert({
     where: { email: 'employee2@company.com' },
-    update: {},
+    update: { ...seedUserBase },
     create: {
       name: 'Ali Yılmaz',
       email: 'employee2@company.com',
-      password: hashedPassword,
       department: 'Sales',
       role: UserRole.EMPLOYEE,
       managerId: manager.id,
+      ...seedUserBase,
     },
   });
 

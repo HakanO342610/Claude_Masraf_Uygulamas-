@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -22,6 +23,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late TextEditingController _costCenterController;
   late TextEditingController _projectCodeController;
   late TextEditingController _descriptionController;
+  late TextEditingController _receiptNumberController;
 
   DateTime _selectedDate = DateTime.now();
   String _selectedCurrency = 'TRY';
@@ -35,6 +37,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   bool _isUploading = false;
   String? _ocrMessage;
 
+  // SAP retry/debug state
+  bool _sapRetrying = false;
+  String? _sapRetryResult;
+  bool _sapDebugging = false;
+  Map<String, dynamic>? _sapDebugResult;
+
   late List<String> _availableCategories;
 
   @override
@@ -45,6 +53,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     _costCenterController = TextEditingController();
     _projectCodeController = TextEditingController();
     _descriptionController = TextEditingController();
+    _receiptNumberController = TextEditingController();
     _availableCategories = List.from(Expense.categories);
   }
 
@@ -65,6 +74,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       _costCenterController.text = args.costCenter;
       _projectCodeController.text = args.projectCode;
       _descriptionController.text = args.description;
+      _receiptNumberController.text = args.receiptNumber ?? '';
 
       if (!_availableCategories.contains(args.category)) {
         _availableCategories.add(args.category);
@@ -79,6 +89,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     _costCenterController.dispose();
     _projectCodeController.dispose();
     _descriptionController.dispose();
+    _receiptNumberController.dispose();
     super.dispose();
   }
 
@@ -135,7 +146,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             }
           }
           if (ocr['extractedVendor'] != null) {
-            _descriptionController.text = 'Expense at ${ocr['extractedVendor']}';
+            _descriptionController.text =
+                'Expense at ${ocr['extractedVendor']}';
             fieldsUpdated++;
           }
           if (ocr['extractedCategory'] != null &&
@@ -143,8 +155,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             _selectedCategory = ocr['extractedCategory'];
             fieldsUpdated++;
           }
-          if (ocr['currency'] != null && Expense.currencies.contains(ocr['currency'])) {
+          if (ocr['currency'] != null &&
+              Expense.currencies.contains(ocr['currency'])) {
             _selectedCurrency = ocr['currency'];
+            fieldsUpdated++;
+          }
+          if (ocr['receiptNumber'] != null &&
+              ocr['receiptNumber'].toString().isNotEmpty) {
+            _receiptNumberController.text = ocr['receiptNumber'].toString();
             fieldsUpdated++;
           }
 
@@ -154,13 +172,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             _ocrMessage = l10n?.receiptProcessing ?? 'Receipt uploaded.';
           }
         } else {
-          _ocrMessage = l10n?.receiptProcessing ?? 'Receipt uploaded successfully.';
+          _ocrMessage =
+              l10n?.receiptProcessing ?? 'Receipt uploaded successfully.';
         }
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n?.receiptProcessing ?? 'Receipt processing complete')),
+          SnackBar(
+              content: Text(
+                  l10n?.receiptProcessing ?? 'Receipt processing complete')),
         );
       }
     } catch (e) {
@@ -188,6 +209,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       'costCenter': _costCenterController.text.trim(),
       'projectCode': _projectCodeController.text.trim(),
       'description': _descriptionController.text.trim(),
+      'receiptNumber': _receiptNumberController.text.trim(),
     };
   }
 
@@ -207,43 +229,45 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     setState(() => _saving = true);
 
     if (_existingExpense == null) {
-      bool isDuplicate = false;
+      // Fiş/Fatura no zorunlu — client-side mükerrer kontrol
+      final receiptNo = _receiptNumberController.text.trim();
       try {
-        final amount = double.tryParse(_amountController.text) ?? 0;
-        final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
-        final existing = await _api.getExpenses(limit: 100);
-        isDuplicate = existing.any((e) =>
-            e.amount == amount &&
-            e.category == _selectedCategory &&
-            DateFormat('yyyy-MM-dd').format(e.expenseDate) == dateStr);
-      } catch (_) {
-        // Ağ hatası → duplicate check atlanamaz, kayıt engelle
-        if (mounted) setState(() => _saving = false);
-        return;
-      }
+        final existing = await _api.getExpenses(limit: 200);
+        final isDuplicate = existing.any((e) =>
+            e.receiptNumber != null &&
+            e.receiptNumber!.toUpperCase() == receiptNo.toUpperCase());
 
-      if (isDuplicate && mounted) {
-        final l10n = AppLocalizations.of(context);
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 40),
-            title: Text(l10n?.duplicateWarning ?? 'Duplicate Warning'),
-            content: Text(l10n?.duplicateMessage ??
-                'A similar expense (same date, amount, category) already exists. Saving is blocked.'),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(l10n?.cancel ?? 'Close'),
-              ),
-            ],
-          ),
-        );
-        if (mounted) setState(() => _saving = false); // Butonu tekrar etkinleştir
-        return; // Kayıt engellendi
+        if (isDuplicate && mounted) {
+          await _showDuplicateDialog();
+          if (mounted) setState(() => _saving = false);
+          return;
+        }
+      } catch (_) {
+        // Ağ hatası → backend kontrolüne bırak, devam et
       }
     }
     await _save(submit: submit);
+  }
+
+  Future<void> _showDuplicateDialog() async {
+    final l10n = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.block, color: Colors.red, size: 48),
+        title: Text(l10n?.duplicateWarning ?? 'Mükerrer Masraf'),
+        content: Text(l10n?.duplicateMessage ??
+            'Aynı tarih, tutar ve kategoride zaten bir masraf mevcut.\n\nKayıt engellendi.'),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Tamam'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _save({required bool submit}) async {
@@ -283,13 +307,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       }
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        // Backend mükerrer hatası → dialog göster
+        if (e.message.toLowerCase().contains('mükerrer') ||
+            e.message.toLowerCase().contains('mükerer') ||
+            e.message.contains('zaten bir masraf')) {
+          await _showDuplicateDialog();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -387,13 +418,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                           padding: const EdgeInsets.all(8),
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer,
+                            color:
+                                Theme.of(context).colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             _ocrMessage!,
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
                             ),
                           ),
                         ),
@@ -403,7 +437,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
-                                    onPressed: () => _pickReceipt(ImageSource.camera),
+                                    onPressed: () =>
+                                        _pickReceipt(ImageSource.camera),
                                     icon: const Icon(Icons.camera_alt),
                                     label: Text(l10n?.camera ?? 'Camera'),
                                   ),
@@ -411,7 +446,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: OutlinedButton.icon(
-                                    onPressed: () => _pickReceipt(ImageSource.gallery),
+                                    onPressed: () =>
+                                        _pickReceipt(ImageSource.gallery),
                                     icon: const Icon(Icons.photo_library),
                                     label: Text(l10n?.gallery ?? 'Gallery'),
                                   ),
@@ -425,12 +461,35 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               const SizedBox(height: 16),
             ],
 
+            // Fiş / Fatura No — zorunlu, en üstte (Date'den önce)
+            TextFormField(
+              controller: _receiptNumberController,
+              readOnly: isViewOnly || _isEditing,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                labelText: 'Fiş / Fatura No *',
+                hintText: 'örn. 0001234567',
+                prefixIcon: const Icon(Icons.receipt_outlined),
+                helperText: _isEditing
+                    ? 'Fiş/fatura numarası değiştirilemez'
+                    : 'Zorunlu — aynı fiş/fatura no iki kez kaydedilemez',
+              ),
+              validator: (value) {
+                if (!_isEditing && (value == null || value.trim().isEmpty)) {
+                  return 'Fiş/fatura numarası zorunludur';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
             // Date picker
             Card(
               child: ListTile(
                 leading: const Icon(Icons.calendar_today),
                 title: Text(l10n?.expenseDate ?? 'Expense Date'),
-                subtitle: Text(DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate)),
+                subtitle: Text(
+                    DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate)),
                 trailing: isViewOnly ? null : const Icon(Icons.chevron_right),
                 onTap: isViewOnly ? null : _selectDate,
               ),
@@ -445,9 +504,11 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                   flex: 2,
                   child: TextFormField(
                     controller: _amountController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d+\.?\d{0,2}')),
                     ],
                     readOnly: isViewOnly,
                     decoration: InputDecoration(
@@ -458,7 +519,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     validator: (value) {
                       if (value == null || value.isEmpty) return 'Required';
                       final amount = double.tryParse(value);
-                      if (amount == null || amount <= 0) return 'Enter a valid amount';
+                      if (amount == null || amount <= 0)
+                        return 'Enter a valid amount';
                       return null;
                     },
                   ),
@@ -468,14 +530,17 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                   flex: 1,
                   child: DropdownButtonFormField<String>(
                     value: _selectedCurrency,
-                    decoration: InputDecoration(labelText: l10n?.currency ?? 'Currency'),
+                    decoration: InputDecoration(
+                        labelText: l10n?.currency ?? 'Currency'),
                     items: Expense.currencies.map((currency) {
-                      return DropdownMenuItem(value: currency, child: Text(currency));
+                      return DropdownMenuItem(
+                          value: currency, child: Text(currency));
                     }).toList(),
                     onChanged: isViewOnly
                         ? null
                         : (value) {
-                            if (value != null) setState(() => _selectedCurrency = value);
+                            if (value != null)
+                              setState(() => _selectedCurrency = value);
                           },
                   ),
                 ),
@@ -489,23 +554,74 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               children: [
                 Expanded(
                   flex: 1,
-                  child: TextFormField(
-                    controller: _taxAmountController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: _taxAmountController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d+\.?\d{0,2}')),
+                        ],
+                        readOnly: isViewOnly,
+                        decoration: InputDecoration(
+                          labelText: l10n?.kdvVat ?? 'KDV (%20)',
+                          hintText: '0.00',
+                          helperText: '%20 İndirilecek KDV',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                        validator: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            if (double.tryParse(value) == null)
+                              return 'Geçersiz';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (!isViewOnly) ...[
+                        const SizedBox(height: 4),
+                        GestureDetector(
+                          onTap: () {
+                            final net = double.tryParse(_amountController.text);
+                            if (net != null && net > 0) {
+                              setState(() {
+                                _taxAmountController.text =
+                                    (net * 0.20).toStringAsFixed(2);
+                              });
+                            }
+                          },
+                          child: Text(
+                            '%20 Hesapla',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      // Matrah + KDV = Brüt özeti
+                      Builder(builder: (_) {
+                        final net = double.tryParse(_amountController.text);
+                        final kdv = double.tryParse(_taxAmountController.text);
+                        if (net != null && kdv != null && net > 0 && kdv >= 0) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Brüt: ${(net + kdv).toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      }),
                     ],
-                    readOnly: isViewOnly,
-                    decoration: InputDecoration(
-                      labelText: l10n?.kdvVat ?? 'KDV (VAT)',
-                      hintText: '0.00',
-                    ),
-                    validator: (value) {
-                      if (value != null && value.isNotEmpty) {
-                        if (double.tryParse(value) == null) return 'Invalid';
-                      }
-                      return null;
-                    },
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -518,15 +634,18 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       prefixIcon: const Icon(Icons.category_outlined),
                     ),
                     items: _availableCategories.map((category) {
-                      return DropdownMenuItem(value: category, child: Text(category));
+                      return DropdownMenuItem(
+                          value: category, child: Text(category));
                     }).toList(),
                     onChanged: isViewOnly
                         ? null
                         : (value) {
-                            if (value != null) setState(() => _selectedCategory = value);
+                            if (value != null)
+                              setState(() => _selectedCategory = value);
                           },
                     validator: (value) {
-                      if (value == null || value.isEmpty) return 'Please select a category';
+                      if (value == null || value.isEmpty)
+                        return 'Please select a category';
                       return null;
                     },
                   ),
@@ -541,7 +660,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               readOnly: isViewOnly,
               textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
-                labelText: '${l10n?.costCenter ?? 'Cost Center'} (${l10n?.optional ?? 'optional'})',
+                labelText:
+                    '${l10n?.costCenter ?? 'Cost Center'} (${l10n?.optional ?? 'optional'})',
                 hintText: 'e.g. CC-1001',
                 prefixIcon: const Icon(Icons.business_outlined),
               ),
@@ -554,7 +674,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               readOnly: isViewOnly,
               textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
-                labelText: '${l10n?.projectCode ?? 'Project Code'} (${l10n?.optional ?? 'optional'})',
+                labelText:
+                    '${l10n?.projectCode ?? 'Project Code'} (${l10n?.optional ?? 'optional'})',
                 hintText: 'e.g. PRJ-2024-001',
                 prefixIcon: const Icon(Icons.folder_outlined),
               ),
@@ -574,23 +695,15 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 alignLabelWithHint: true,
               ),
               validator: (value) {
-                if (value == null || value.trim().isEmpty) return 'Please enter a description';
+                if (value == null || value.trim().isEmpty)
+                  return 'Please enter a description';
                 return null;
               },
             ),
             const SizedBox(height: 16),
 
-            // SAP Document Number (read-only if present)
-            if (_existingExpense?.sapDocumentNumber != null &&
-                _existingExpense!.sapDocumentNumber!.isNotEmpty)
-              Card(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: ListTile(
-                  leading: const Icon(Icons.numbers),
-                  title: Text(l10n?.sapDocNumber ?? 'SAP Document Number'),
-                  subtitle: Text(_existingExpense!.sapDocumentNumber!),
-                ),
-              ),
+            // SAP Posting Panel — sadece view modunda ve SAP durumu mevcutsa
+            if (isViewOnly) _buildSapPanel(context, l10n),
 
             const SizedBox(height: 8),
           ],
@@ -598,6 +711,376 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       ),
     );
   }
+
+  // ==================== SAP Panel ====================
+
+  Widget _buildSapPanel(BuildContext context, AppLocalizations? l10n) {
+    final expense = _existingExpense;
+    if (expense == null) return const SizedBox.shrink();
+
+    final sapStatus = expense.sapStatus;
+
+    // SAP Document Number (eski davranış — sapStatus yoksa fallback)
+    if (sapStatus == null || sapStatus == 'NOT_APPLICABLE') {
+      if (expense.sapDocumentNumber != null &&
+          expense.sapDocumentNumber!.isNotEmpty) {
+        return Card(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: ListTile(
+            leading: const Icon(Icons.numbers),
+            title: Text(l10n?.sapDocNumber ?? 'SAP Document Number'),
+            subtitle: Text(expense.sapDocumentNumber!),
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
+
+    // SAP OK
+    if (sapStatus == 'OK') {
+      return Card(
+        color: Colors.teal.shade50,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: Colors.teal.shade300),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.check_circle,
+                      color: Colors.teal.shade700, size: 24),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n?.sapPostingPanel ?? 'SAP Posting',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal.shade800,
+                          ),
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      l10n?.sapOk ?? 'SAP OK',
+                      style: TextStyle(
+                        color: Colors.teal.shade800,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (expense.sapDocumentNumber != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(Icons.numbers, size: 16, color: Colors.teal.shade600),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${l10n?.sapDocNumber ?? 'SAP Doc'}: ${expense.sapDocumentNumber}',
+                      style: TextStyle(color: Colors.teal.shade700),
+                    ),
+                  ],
+                ),
+              ],
+              if (expense.sapPostSuccess != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  expense.sapPostSuccess!,
+                  style: TextStyle(fontSize: 12, color: Colors.teal.shade600),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    // SAP FAILED
+    if (sapStatus == 'FAILED') {
+      return Card(
+        color: Colors.red.shade50,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: Colors.red.shade300),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.error, color: Colors.red.shade700, size: 24),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n?.sapPostingPanel ?? 'SAP Posting',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade800,
+                          ),
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      l10n?.sapFailed ?? 'SAP NOK',
+                      style: TextStyle(
+                        color: Colors.red.shade800,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (expense.sapPostError != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    expense.sapPostError!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: Colors.red.shade900,
+                    ),
+                  ),
+                ),
+              ],
+              if (_sapRetryResult != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _sapRetryResult!,
+                    style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
+                  ),
+                ),
+              ],
+              if (_sapDebugResult != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    const JsonEncoder.withIndent('  ').convert(_sapDebugResult),
+                    style:
+                        const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed:
+                          _sapRetrying ? null : () => _retrySapPost(l10n),
+                      icon: _sapRetrying
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.refresh, size: 18),
+                      label: Text(l10n?.sapRetrySend ?? 'SAP Yeniden Gönder'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.amber.shade700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _sapDebugging ? null : () => _debugSapPost(l10n),
+                    icon: _sapDebugging
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.bug_report, size: 18),
+                    label: Text(l10n?.sapDebugSend ?? 'Debug'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // SAP PENDING
+    return Card(
+      color: Colors.amber.shade50,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Colors.amber.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.schedule, color: Colors.amber.shade700, size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l10n?.sapPostingPanel ?? 'SAP Posting',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber.shade800,
+                        ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    l10n?.sapPending ?? 'SAP Bekliyor',
+                    style: TextStyle(
+                      color: Colors.amber.shade800,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _sapRetrying ? null : () => _retrySapPost(l10n),
+              icon: _sapRetrying
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.refresh, size: 18),
+              label: Text(l10n?.sapRetrySend ?? 'SAP Yeniden Gönder'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.amber.shade700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _retrySapPost(AppLocalizations? l10n) async {
+    if (_existingExpense == null) return;
+    setState(() {
+      _sapRetrying = true;
+      _sapRetryResult = null;
+    });
+
+    try {
+      final result = await _api.retrySapPost(_existingExpense!.id);
+      final success = result['sapDocumentNumber'] != null;
+      setState(() {
+        _sapRetryResult = success
+            ? '${l10n?.sapRetrySuccess ?? 'SAP gönderimi başarılı!'} Doc: ${result['sapDocumentNumber']}'
+            : l10n?.sapRetryFailed ?? 'SAP gönderimi başarısız.';
+      });
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n?.sapRetrySuccess ?? 'SAP gönderimi başarılı!'),
+            backgroundColor: Colors.teal,
+          ),
+        );
+        // Masraf verisini yenile — SAP paneli güncellensin
+        try {
+          final refreshed = await _api.getExpense(_existingExpense!.id);
+          setState(() => _existingExpense = refreshed);
+        } catch (_) {}
+      }
+    } on ApiException catch (e) {
+      // 409 ConflictException = zaten SAP'ta başarıyla gönderilmiş
+      if (e.statusCode == 409) {
+        setState(() {
+          _sapRetryResult =
+              l10n?.sapRetrySuccess ?? 'SAP gönderimi zaten başarılı!';
+        });
+        // Masraf verisini yenile — SAP paneli OK göstersin
+        try {
+          final refreshed = await _api.getExpense(_existingExpense!.id);
+          setState(() => _existingExpense = refreshed);
+        } catch (_) {}
+      } else {
+        setState(() {
+          _sapRetryResult = '${l10n?.sapRetryFailed ?? 'Hata'}: ${e.message}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _sapRetryResult = '${l10n?.sapRetryFailed ?? 'Hata'}: $e';
+      });
+    } finally {
+      if (mounted) setState(() => _sapRetrying = false);
+    }
+  }
+
+  Future<void> _debugSapPost(AppLocalizations? l10n) async {
+    if (_existingExpense == null) return;
+    setState(() {
+      _sapDebugging = true;
+      _sapDebugResult = null;
+    });
+
+    try {
+      final result = await _api.debugSapPost(_existingExpense!.id);
+      setState(() => _sapDebugResult = result);
+    } catch (e) {
+      setState(() {
+        _sapDebugResult = {'error': e.toString()};
+      });
+    } finally {
+      if (mounted) setState(() => _sapDebugging = false);
+    }
+  }
+
+  // ==================== Delete ====================
 
   Future<void> _confirmDelete() async {
     final l10n = AppLocalizations.of(context);

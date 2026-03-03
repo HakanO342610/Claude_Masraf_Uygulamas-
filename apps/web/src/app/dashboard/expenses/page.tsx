@@ -13,9 +13,14 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  RotateCw,
+  Eye,
 } from 'lucide-react';
 import { expenseApi } from '@/lib/api';
-import { useI18nStore } from '@/lib/store';
+import { useI18nStore, useAuthStore } from '@/lib/store';
 import ExpenseStatusBadge from '@/components/ExpenseStatusBadge';
 
 interface Expense {
@@ -30,10 +35,38 @@ interface Expense {
   sapDocumentNumber?: string;
   costCenter?: string;
   projectCode?: string;
+  receiptNumber?: string;
+  sapStatus?: string;
+  sapPostError?: string | null;
+  user?: { name?: string; email?: string; department?: string };
+}
+
+function SapStatusBadge({ sapStatus, compact }: { sapStatus?: string; compact?: boolean }) {
+  if (!sapStatus || sapStatus === 'NOT_APPLICABLE') return <span className="text-gray-300">-</span>;
+
+  const styles: Record<string, { bg: string; text: string; icon: typeof CheckCircle2 }> = {
+    OK: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-700 dark:text-emerald-400', icon: CheckCircle2 },
+    FAILED: { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-400', icon: XCircle },
+    PENDING: { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-400', icon: Clock },
+  };
+
+  const style = styles[sapStatus] || styles.PENDING;
+  const Icon = style.icon;
+  const label = sapStatus === 'OK' ? 'SAP OK' : sapStatus === 'FAILED' ? 'SAP NOK' : 'SAP ⏳';
+
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${style.bg} ${style.text}`}>
+      <Icon className="h-3 w-3" />
+      {!compact && label}
+    </span>
+  );
 }
 
 export default function ExpensesPage() {
   const { t } = useI18nStore();
+  const { user } = useAuthStore();
+  const isElevated = user?.role === 'FINANCE' || user?.role === 'ADMIN';
+  const [viewMode, setViewMode] = useState<'my' | 'all'>(isElevated ? 'all' : 'my');
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +94,7 @@ export default function ExpensesPage() {
   useEffect(() => {
     setCurrentPage(1);
     fetchExpenses();
-  }, [statusFilter, fromDate, toDate]);
+  }, [statusFilter, fromDate, toDate, viewMode]);
 
   const fetchExpenses = async () => {
     try {
@@ -71,7 +104,11 @@ export default function ExpensesPage() {
       if (statusFilter) params.status = statusFilter;
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
-      const response = await expenseApi.getAll(Object.keys(params).length > 0 ? params : undefined);
+
+      const response = (isElevated && viewMode === 'all')
+        ? await expenseApi.getAllAdmin(Object.keys(params).length > 0 ? params : undefined)
+        : await expenseApi.getAll(Object.keys(params).length > 0 ? params : undefined);
+
       const data = Array.isArray(response.data) ? response.data : response.data.data || [];
       setExpenses(data);
     } catch (err: any) {
@@ -104,13 +141,31 @@ export default function ExpensesPage() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{t.expenses}</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t.manageExpenses}</p>
         </div>
-        <Link
-          href="/dashboard/expenses/new"
-          className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
-        >
-          <Plus className="h-4 w-4" />
-          {t.newExpense}
-        </Link>
+        <div className="flex items-center gap-3">
+          {isElevated && (
+            <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
+              <button
+                onClick={() => setViewMode('all')}
+                className={`px-3 py-2 font-medium transition-colors ${viewMode === 'all' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+              >
+                {t.allExpenses}
+              </button>
+              <button
+                onClick={() => setViewMode('my')}
+                className={`px-3 py-2 font-medium transition-colors ${viewMode === 'my' ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+              >
+                {t.myExpenses}
+              </button>
+            </div>
+          )}
+          <Link
+            href="/dashboard/expenses/new"
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
+          >
+            <Plus className="h-4 w-4" />
+            {t.newExpense}
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
@@ -184,13 +239,14 @@ export default function ExpensesPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-700/50">
                   <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.date}</th>
+                  {isElevated && viewMode === 'all' && (
+                    <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.employee}</th>
+                  )}
                   <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.description}</th>
                   <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.amount}</th>
-                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.kdv}</th>
                   <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.category}</th>
-                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.costCenter}</th>
                   <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.status}</th>
-                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.sapDoc}</th>
+                  <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.sapStatus}</th>
                   <th className="px-6 py-3 font-medium text-gray-500 dark:text-gray-400">{t.actions}</th>
                 </tr>
               </thead>
@@ -200,8 +256,17 @@ export default function ExpensesPage() {
                     <td className="px-6 py-3.5 text-gray-900 dark:text-gray-200">
                       {format(new Date(expense.expenseDate), 'dd MMM yyyy')}
                     </td>
+                    {isElevated && viewMode === 'all' && (
+                      <td className="px-6 py-3.5 text-gray-600 dark:text-gray-300">
+                        <div className="text-sm font-medium">{expense.user?.name || '-'}</div>
+                        <div className="text-xs text-gray-400">{expense.user?.department || ''}</div>
+                      </td>
+                    )}
                     <td className="px-6 py-3.5 text-gray-600 max-w-xs truncate dark:text-gray-300">
-                      {expense.description || '-'}
+                      <div>{expense.description || '-'}</div>
+                      {expense.receiptNumber && (
+                        <div className="text-xs text-gray-400 font-mono mt-0.5">#{expense.receiptNumber}</div>
+                      )}
                     </td>
                     <td className="px-6 py-3.5 font-medium text-gray-900 dark:text-gray-200">
                       {new Intl.NumberFormat('tr-TR', {
@@ -209,41 +274,59 @@ export default function ExpensesPage() {
                         currency: expense.currency || 'TRY',
                       }).format(Number(expense.amount))}
                     </td>
-                    <td className="px-6 py-3.5 text-gray-500 text-xs dark:text-gray-400">
-                      {expense.taxAmount != null && Number(expense.taxAmount) > 0
-                        ? new Intl.NumberFormat('tr-TR', {
-                            style: 'currency',
-                            currency: expense.currency || 'TRY',
-                          }).format(Number(expense.taxAmount))
-                        : '-'}
-                    </td>
                     <td className="px-6 py-3.5 text-gray-600 dark:text-gray-300">{expense.category}</td>
-                    <td className="px-6 py-3.5 text-gray-500 dark:text-gray-400">{expense.costCenter || '-'}</td>
                     <td className="px-6 py-3.5">
                       <ExpenseStatusBadge status={expense.status} />
                     </td>
-                    <td className="px-6 py-3.5 text-gray-500 dark:text-gray-400">
-                      {expense.sapDocumentNumber || '-'}
+                    <td className="px-6 py-3.5">
+                      <SapStatusBadge sapStatus={expense.sapStatus} />
                     </td>
                     <td className="px-6 py-3.5">
-                      {expense.status === 'DRAFT' && (
-                        <div className="flex items-center gap-1">
-                          <Link
-                            href={`/dashboard/expenses/${expense.id}`}
-                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            {t.edit}
-                          </Link>
+                      <div className="flex items-center gap-1">
+                        <Link
+                          href={`/dashboard/expenses/${expense.id}`}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          title={t.expenseDetails}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Link>
+                        {expense.status === 'DRAFT' && (
+                          <>
+                            <Link
+                              href={`/dashboard/expenses/${expense.id}`}
+                              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Link>
+                            <button
+                              onClick={() => setDeleteTarget(expense.id)}
+                              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                        {isElevated && expense.sapStatus === 'FAILED' && (
                           <button
-                            onClick={() => setDeleteTarget(expense.id)}
-                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                            onClick={async () => {
+                              try {
+                                await expenseApi.retrySap(expense.id);
+                                fetchExpenses();
+                              } catch (err: any) {
+                                // ConflictException (409) = zaten SAP'ta — listeyi yenile
+                                fetchExpenses();
+                                if (err.response?.status !== 409) {
+                                  alert(err.response?.data?.message || t.sapRetryFailed);
+                                }
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-50 transition-colors"
+                            title={t.sapRetrySend}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {t.deleteExpense}
+                            <RotateCw className="h-3.5 w-3.5" />
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -13,7 +13,7 @@ import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AuthService {
-  private readonly REFRESH_TOKEN_EXPIRY_DAYS = 7;
+  private readonly REFRESH_TOKEN_EXPIRY_DAYS = 30;
 
   constructor(
     private prisma: PrismaService,

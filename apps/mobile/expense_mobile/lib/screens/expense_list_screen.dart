@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../models/expense.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../widgets/expense_card.dart';
 import '../providers/locale_provider.dart';
 import '../providers/theme_provider.dart';
@@ -24,21 +25,39 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
   String _selectedFilter = 'all';
   bool _isOffline = false;
 
+  /// FINANCE/ADMIN: 'all' tüm masraflar, 'mine' kendi masraflarım
+  String _viewMode = 'mine';
+  bool _isElevated = false;
+
   // Filtre etiketleri build() içinde l10n ile doldurulur
   Map<String, String> _getFilters(AppLocalizations? l10n) => {
-    'all': l10n?.all ?? 'All',
-    'DRAFT': l10n?.draft ?? 'Draft',
-    'SUBMITTED': l10n?.submitted ?? 'Submitted',
-    'MANAGER_APPROVED': l10n?.managerApproved ?? 'Manager Approved',
-    'FINANCE_APPROVED': l10n?.financeApproved ?? 'Finance Approved',
-    'REJECTED': l10n?.rejected ?? 'Rejected',
-    'POSTED_TO_SAP': l10n?.postedToSap ?? 'Posted to SAP',
-  };
+        'all': l10n?.all ?? 'All',
+        'DRAFT': l10n?.draft ?? 'Draft',
+        'SUBMITTED': l10n?.submitted ?? 'Submitted',
+        'MANAGER_APPROVED': l10n?.managerApproved ?? 'Manager Approved',
+        'FINANCE_APPROVED': l10n?.financeApproved ?? 'Finance Approved',
+        'REJECTED': l10n?.rejected ?? 'Rejected',
+        'POSTED_TO_SAP': l10n?.postedToSap ?? 'Posted to SAP',
+      };
 
   @override
   void initState() {
     super.initState();
+    _checkRole();
     _loadExpenses();
+  }
+
+  void _checkRole() {
+    // AuthService'den kullanıcı rolünü al
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final user = authService.user;
+      if (user != null && (user.isAdmin || user.isFinance)) {
+        _isElevated = true;
+      }
+    } catch (_) {
+      // Provider bulunamazsa varsayılan davranış
+    }
   }
 
   Future<void> _loadExpenses() async {
@@ -52,8 +71,18 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
     setState(() => _isOffline = offline);
 
     try {
-      final status = _selectedFilter == 'all' ? null : _selectedFilter;
-      _expenses = await _api.getExpenses(status: status, limit: 100);
+      if (_isElevated && _viewMode == 'all') {
+        // FINANCE/ADMIN: tüm masrafları SAP durumu ile getir
+        _expenses = await _api.getAllAdminExpenses(limit: 200);
+        // Client-side status filter
+        if (_selectedFilter != 'all') {
+          _expenses =
+              _expenses.where((e) => e.status == _selectedFilter).toList();
+        }
+      } else {
+        final status = _selectedFilter == 'all' ? null : _selectedFilter;
+        _expenses = await _api.getExpenses(status: status, limit: 100);
+      }
     } on ApiException catch (e) {
       _error = e.message;
     } catch (e) {
@@ -67,8 +96,10 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(AppLocalizations.of(context)?.deleteExpense ?? 'Delete Expense'),
-        content: Text(AppLocalizations.of(context)?.deleteExpenseConfirm ?? 'Are you sure you want to delete this expense?'),
+        title: Text(
+            AppLocalizations.of(context)?.deleteExpense ?? 'Delete Expense'),
+        content: Text(AppLocalizations.of(context)?.deleteExpenseConfirm ??
+            'Are you sure you want to delete this expense?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -76,7 +107,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
             child: Text(AppLocalizations.of(context)?.delete ?? 'Delete'),
           ),
         ],
@@ -88,14 +120,18 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
         await _api.deleteExpense(id);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(AppLocalizations.of(context)?.expenseDeleted ?? 'Expense deleted')),
+            SnackBar(
+                content: Text(AppLocalizations.of(context)?.expenseDeleted ??
+                    'Expense deleted')),
           );
         }
         _loadExpenses();
       } on ApiException catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.message), backgroundColor: Theme.of(context).colorScheme.error),
+            SnackBar(
+                content: Text(e.message),
+                backgroundColor: Theme.of(context).colorScheme.error),
           );
         }
       }
@@ -112,7 +148,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
     // Compute duplicates
     final counts = <String, int>{};
     for (var e in _expenses) {
-      final key = '${e.description}_${e.amount}_${DateFormat('yyyy-MM-dd').format(e.expenseDate)}';
+      final key =
+          '${e.description}_${e.amount}_${DateFormat('yyyy-MM-dd').format(e.expenseDate)}';
       counts[key] = (counts[key] ?? 0) + 1;
     }
 
@@ -120,6 +157,38 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
       appBar: AppBar(
         title: Text(l10n?.expenses ?? 'Expenses'),
         actions: [
+          // FINANCE/ADMIN: Tüm masraflar / Masraflarım toggle
+          if (_isElevated)
+            SegmentedButton<String>(
+              segments: [
+                ButtonSegment(
+                  value: 'mine',
+                  label: Text(
+                    l10n?.myExpenses ?? 'Benim',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  icon: const Icon(Icons.person, size: 16),
+                ),
+                ButtonSegment(
+                  value: 'all',
+                  label: Text(
+                    l10n?.allExpenses ?? 'Tümü',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  icon: const Icon(Icons.people, size: 16),
+                ),
+              ],
+              selected: {_viewMode},
+              onSelectionChanged: (sel) {
+                setState(() => _viewMode = sel.first);
+                _loadExpenses();
+              },
+              style: SegmentedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          if (_isElevated) const SizedBox(width: 4),
           TextButton(
             onPressed: () => localeProvider.toggle(),
             style: TextButton.styleFrom(
@@ -134,14 +203,19 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
                 const SizedBox(width: 4),
                 Text(
                   localeProvider.isTurkish ? 'TR' : 'EN',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13),
                 ),
               ],
             ),
           ),
           IconButton(
-            icon: Icon(themeProvider.themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode),
-            tooltip: themeProvider.themeMode == ThemeMode.dark ? (l10n?.lightMode ?? 'Light Mode') : (l10n?.darkMode ?? 'Dark Mode'),
+            icon: Icon(themeProvider.themeMode == ThemeMode.dark
+                ? Icons.light_mode
+                : Icons.dark_mode),
+            tooltip: themeProvider.themeMode == ThemeMode.dark
+                ? (l10n?.lightMode ?? 'Light Mode')
+                : (l10n?.darkMode ?? 'Dark Mode'),
             onPressed: () => themeProvider.toggle(),
           ),
         ],
@@ -228,8 +302,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48,
-                color: Theme.of(context).colorScheme.error),
+            Icon(Icons.error_outline,
+                size: 48, color: Theme.of(context).colorScheme.error),
             const SizedBox(height: 16),
             Text(_error!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
@@ -252,7 +326,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.receipt_long_outlined, size: 64,
+            Icon(Icons.receipt_long_outlined,
+                size: 64,
                 color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
@@ -281,7 +356,8 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
       itemCount: _expenses.length,
       itemBuilder: (context, index) {
         final expense = _expenses[index];
-        final key = '${expense.description}_${expense.amount}_${DateFormat('yyyy-MM-dd').format(expense.expenseDate)}';
+        final key =
+            '${expense.description}_${expense.amount}_${DateFormat('yyyy-MM-dd').format(expense.expenseDate)}';
         final isDuplicate = (counts[key] ?? 0) > 1;
 
         return Padding(
@@ -289,7 +365,10 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
           child: ExpenseCard(
             expense: expense,
             isDuplicate: isDuplicate,
-            onDelete: (expense.isDraft || expense.isSubmitted || expense.isRejected) ? () => _deleteExpense(expense.id) : null,
+            onDelete:
+                (expense.isDraft || expense.isSubmitted || expense.isRejected)
+                    ? () => _deleteExpense(expense.id)
+                    : null,
             onTap: () async {
               final result = await Navigator.of(context).pushNamed(
                 '/expenses/edit',

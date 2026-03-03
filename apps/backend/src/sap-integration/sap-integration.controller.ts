@@ -67,4 +67,13 @@ export class SapIntegrationController {
   testConnection() {
     return this.sapService.testConnection();
   }
+
+  @Post('debug-raw/:id')
+  @Roles('FINANCE', 'ADMIN')
+  @ApiOperation({
+    summary: 'DEBUG: SAP ham yanıt — ABAP debug modunda çağır, DB güncellenmez',
+  })
+  debugRawPost(@Param('id') id: string) {
+    return this.sapService.debugRawPost(id);
+  }
 }

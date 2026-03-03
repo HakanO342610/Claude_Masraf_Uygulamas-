@@ -433,7 +433,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ),
                               ),
                               Text(
-                                localeProvider.isTurkish ? 'Yaklaşık TRY karşılığı' : 'Approx. TRY equivalent',
+                                context.read<LocaleProvider>().isTurkish ? 'Yaklaşık TRY karşılığı' : 'Approx. TRY equivalent',
                                 style: const TextStyle(color: Colors.grey, fontSize: 11),
                               ),
                             ],

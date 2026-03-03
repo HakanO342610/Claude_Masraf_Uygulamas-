@@ -53,21 +53,52 @@ class ExpenseCard extends StatelessWidget {
                       children: [
                         Text(
                           expense.description,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
                         Text(
                           DateFormat('MMM d, yyyy').format(expense.expenseDate),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
+                        // Admin view: çalışan adı
+                        if (expense.userName != null) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline,
+                                  size: 12,
+                                  color: Theme.of(context).colorScheme.primary),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  expense.userName!,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 11,
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -84,10 +115,13 @@ class ExpenseCard extends StatelessWidget {
                       if (expense.taxAmount != null && expense.taxAmount! > 0)
                         Text(
                           'KDV: ${expense.taxAmount!.toStringAsFixed(2)}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                fontSize: 11,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                    fontSize: 11,
+                                  ),
                         ),
                       const SizedBox(height: 4),
                       Row(
@@ -103,7 +137,8 @@ class ExpenseCard extends StatelessWidget {
                                   color: Colors.red.shade100,
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(Icons.delete_outline, size: 16, color: Colors.red.shade800),
+                                child: Icon(Icons.delete_outline,
+                                    size: 16, color: Colors.red.shade800),
                               ),
                             ),
                           _StatusBadge(status: expense.status),
@@ -114,7 +149,7 @@ class ExpenseCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              // Bottom row: category, cost center, project code
+              // Bottom row: category, cost center, project code, SAP status
               Wrap(
                 spacing: 8,
                 runSpacing: 4,
@@ -124,9 +159,14 @@ class ExpenseCard extends StatelessWidget {
                     _buildTag(context, expense.costCenter),
                   if (expense.projectCode.isNotEmpty)
                     _buildTag(context, expense.projectCode),
+                  // SAP Status Badge
+                  if (expense.sapStatus != null &&
+                      expense.sapStatus != 'NOT_APPLICABLE')
+                    _SapStatusBadge(sapStatus: expense.sapStatus!),
                   if (isDuplicate)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.orange.shade100,
                         borderRadius: BorderRadius.circular(4),
@@ -135,11 +175,15 @@ class ExpenseCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange.shade800),
+                          Icon(Icons.warning_amber_rounded,
+                              size: 14, color: Colors.orange.shade800),
                           const SizedBox(width: 4),
                           Text(
                             'Mükerrer / Duplicate',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
                                   color: Colors.orange.shade900,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -282,5 +326,67 @@ class _StatusBadge extends StatelessWidget {
       default:
         return status;
     }
+  }
+}
+
+/// SAP posting durumunu gösteren küçük badge
+class _SapStatusBadge extends StatelessWidget {
+  final String sapStatus;
+
+  const _SapStatusBadge({required this.sapStatus});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    Color bgColor;
+    Color fgColor;
+    IconData icon;
+    String label;
+
+    switch (sapStatus) {
+      case 'OK':
+        bgColor = Colors.teal.shade100;
+        fgColor = Colors.teal.shade800;
+        icon = Icons.check_circle_outline;
+        label = l10n?.sapOk ?? 'SAP OK';
+        break;
+      case 'FAILED':
+        bgColor = Colors.red.shade100;
+        fgColor = Colors.red.shade800;
+        icon = Icons.error_outline;
+        label = l10n?.sapFailed ?? 'SAP NOK';
+        break;
+      case 'PENDING':
+        bgColor = Colors.amber.shade100;
+        fgColor = Colors.amber.shade800;
+        icon = Icons.schedule;
+        label = l10n?.sapPending ?? 'SAP Bekliyor';
+        break;
+      default:
+        return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: fgColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: fgColor,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

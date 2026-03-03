@@ -33,6 +33,7 @@ const getExpenseSchema = (t: any) => z.object({
   costCenter: z.string().optional(),
   projectCode: z.string().optional(),
   description: z.string().min(1, t.validationDescRequired).max(500, t.validationDescLong),
+  receiptNumber: z.string().min(1, 'Fiş/fatura numarası zorunludur'),
 });
 
 type ExpenseFormData = {
@@ -44,6 +45,7 @@ type ExpenseFormData = {
   costCenter?: string;
   projectCode?: string;
   description: string;
+  receiptNumber: string;
 };
 
 export default function NewExpensePage() {
@@ -63,6 +65,7 @@ export default function NewExpensePage() {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<ExpenseFormData>({
     resolver: zodResolver(getExpenseSchema(t)),
@@ -71,6 +74,19 @@ export default function NewExpensePage() {
       expenseDate: new Date().toISOString().split('T')[0],
     },
   });
+
+  const watchedAmount = watch('amount');
+  const watchedTax    = watch('taxAmount');
+  // amount = Matrah (KDV hariç net tutar), taxAmount = KDV, brüt = amount + taxAmount
+  const grossAmount   = (watchedAmount > 0 && watchedTax != null && watchedTax >= 0)
+    ? +(watchedAmount + watchedTax).toFixed(2)
+    : null;
+
+  // Matrah üzerinden %20 KDV hesapla (TR: Temmuz 2023'ten itibaren): KDV = Matrah × 0.20
+  const calcKdv18 = () => {
+    if (!watchedAmount || watchedAmount <= 0) return;
+    setValue('taxAmount', +(watchedAmount * 0.20).toFixed(2), { shouldValidate: true });
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -112,7 +128,11 @@ export default function NewExpensePage() {
           setValue('taxAmount', data.ocrData.extractedTaxAmount, { shouldValidate: true });
           fieldsUpdated++;
         }
-        
+        if (data.ocrData.receiptNumber) {
+          setValue('receiptNumber', data.ocrData.receiptNumber, { shouldValidate: true });
+          fieldsUpdated++;
+        }
+
         if (fieldsUpdated > 0) {
           setOcrMessage(`${t.receiptUploadedAutoFilled} ${fieldsUpdated} ${t.fieldsUsingOcr}`);
         } else {
@@ -233,12 +253,36 @@ export default function NewExpensePage() {
           )}
         </div>
 
+        {/* Fiş / Fatura No — zorunlu, OCR'dan hemen sonra */}
+        <div>
+          <label htmlFor="receiptNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            Fiş / Fatura No <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="receiptNumber"
+            type="text"
+            placeholder="örn. 0001234567"
+            {...register('receiptNumber')}
+            className={`block w-full rounded-lg border px-4 py-2.5 text-gray-900 dark:text-white shadow-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 sm:text-sm ${
+              errors.receiptNumber
+                ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/10 focus:border-red-500 focus:ring-red-500/20'
+                : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:border-indigo-500 focus:ring-indigo-500/20'
+            }`}
+          />
+          {errors.receiptNumber ? (
+            <p className="mt-1 text-xs text-red-500">{errors.receiptNumber.message}</p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Aynı fiş/fatura numarası iki kez kaydedilemez</p>
+          )}
+        </div>
+
         {/* Date and Amount row */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 mt-2">
           <div>
             <label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               {t.date}
             </label>
+
             <input
               id="date"
               type="date"
@@ -252,7 +296,7 @@ export default function NewExpensePage() {
 
           <div>
             <label htmlFor="amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              {t.amount}
+              {t.amount} <span className="text-xs font-normal text-gray-400">(KDV hariç / Matrah)</span>
             </label>
             <input
               id="amount"
@@ -272,9 +316,18 @@ export default function NewExpensePage() {
         {/* KDV (Tax) and Currency row */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div>
-            <label htmlFor="taxAmount" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              {t.kdvVat}
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label htmlFor="taxAmount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t.kdvVat} <span className="text-xs font-normal text-gray-400">(%20 İndirilecek)</span>
+              </label>
+              <button
+                type="button"
+                onClick={calcKdv18}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors"
+              >
+                %20 Hesapla
+              </button>
+            </div>
             <input
               id="taxAmount"
               type="number"
@@ -284,6 +337,13 @@ export default function NewExpensePage() {
               {...register('taxAmount')}
               className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-gray-900 dark:text-white shadow-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 sm:text-sm"
             />
+            {grossAmount !== null && grossAmount > 0 && (
+              <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                Matrah <span className="font-medium text-gray-700 dark:text-gray-300">{watchedAmount?.toFixed(2)}</span>
+                {' '}+ KDV <span className="font-medium text-gray-700 dark:text-gray-300">{watchedTax?.toFixed(2)}</span>
+                {' '}= Brüt <span className="font-semibold text-indigo-600 dark:text-indigo-400">{grossAmount.toFixed(2)}</span>
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="currency" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -373,11 +433,11 @@ export default function NewExpensePage() {
           )}
         </div>
 
-        {/* Action buttons */}
-        <div className="flex items-center justify-end gap-3 border-t border-gray-200 dark:border-gray-700 pt-5">
+        {/* Action buttons — full-width mobil stili */}
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-5 flex flex-col gap-3 sm:flex-row">
           <Link
             href="/dashboard/expenses"
-            className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 sm:w-auto"
           >
             {t.cancel}
           </Link>
@@ -385,7 +445,7 @@ export default function NewExpensePage() {
             type="button"
             disabled={isProcessing}
             onClick={handleSubmit(saveAsDraft)}
-            className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -398,14 +458,14 @@ export default function NewExpensePage() {
             type="button"
             disabled={isProcessing}
             onClick={handleSubmit(submitExpense)}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
             )}
-            {t.submit}
+            {t.submitExpense}
           </button>
         </div>
       </form>

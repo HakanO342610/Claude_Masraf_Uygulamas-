@@ -51,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton.icon(
             onPressed: () {
-              localeProvider.setLocale(Locale(isTr ? 'en' : 'tr'));
+              localeProvider.toggle();
             },
             icon: Icon(Icons.language, size: 20, color: Theme.of(context).colorScheme.primary),
             label: Text(

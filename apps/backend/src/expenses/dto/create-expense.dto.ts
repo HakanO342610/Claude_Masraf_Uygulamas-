@@ -45,6 +45,10 @@ export class CreateExpenseDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiProperty({ example: 'FIS-2025-001234' })
+  @IsString()
+  receiptNumber: string;
 }
 
 import { PartialType } from '@nestjs/swagger';

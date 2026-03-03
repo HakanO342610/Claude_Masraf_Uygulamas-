@@ -1,6 +1,6 @@
 # 📋 Project Memory — Expense Management App
 
-> **Son Güncelleme:** 2026-02-27 23:44 (Oturum #3)
+> **Son Güncelleme:** 2026-03-03 (Oturum #7)
 > **Proje:** Claude_Proj1 — Kurumsal Masraf Yönetimi & SAP Entegrasyon Platformu
 
 ---
@@ -92,9 +92,18 @@
 - [x] ABAP: ZFI_EXPENSE_LOG transparent tablo (audit log)
 - [x] End-to-end test: Node.js → SAP ECC → FI Belgesi (010000000x) → POSTED_TO_SAP
 - [x] SAP sistem: SAPR3-TEST.hepsiburada.dmz, Client 200, Şirket 1481
-- [x] GL hesap: 7604001001 (gider), 3350001001 (karşı hesap)
+- [x] GL hesap: 7604001001 (gider), 3350001001 (karşı hesap), 1910001018 (KDV)
 - [x] Tarih formatı: YYYY-MM-DD → YYYYMMDD ABAP dönüşümü
 - [x] CostCenter: CC-XXXX → XXXX strip (adapter)
+- [x] SAP Status Visibility — FINANCE/ADMIN web + mobile'da SAP OK/NOK/Bekliyor görür (Oturum #6)
+- [x] SAP Retry & Debug — Başarısız gönderimler yeniden denenebilir, debug modu (DB'ye yazmadan SAP yanıtı) (Oturum #6)
+- [x] SAP Duplicate Posting Fix — TYPE=S fallback (SAP-OK-{timestamp}), re-post guard (ConflictException 409), retry loop DB check (Oturum #7)
+- [x] CostCenter Leading Zero Padding — `.padStart(10, '0')` SAP ECC adapter'da (Oturum #7)
+- [x] SAP Kuyruk Aktivasyonu — Finance onayı → `enqueue()` (direkt posting yerine), Cron 1dk, MAX_ATTEMPTS=5, exponential backoff 2^n dk, DEAD_LETTER (Oturum #7)
+- [x] Web SAP Queue Sayfası — Dark mode, auto-refresh 30sn, Çalışan/Tutar/Fiş kolonları, Eye ikonu detay linki, bilgi footer (Oturum #7)
+- [x] Web/Mobile 409 Retry Handling — ConflictException yakalama, otomatik veri yenileme (Oturum #7)
+- [x] KDV Analizi — Node.js payload doğru (TaxAmount, TaxCode, TaxGlAccount), ABAP POST_EXPENSE güncelleme kodu hazırlandı (Oturum #7)
+- [ ] ABAP KDV Güncellemesi — POST_EXPENSE'e Kalem 3 (KDV satırı) eklenmeli, Kalem 2'de GrossAmount kullanılmalı (ABAP kodu hazır, SAP'ta uygulanacak)
 - [ ] KS01: SAP'ta 1002/1003/1004 cost center tanımlanacak
 
 ### FAZ 8 — İleri Özellikler ✅ TAMAMLANDI
@@ -149,7 +158,7 @@
 | Web App (React)            | ✅ Çalışıyor            | Docker üzerinden                |
 | Mobile App (Flutter)       | ✅ Çalışıyor            | iOS Simulator (iPhone 17 Pro)   |
 | Database (PostgreSQL)      | ✅ Çalışıyor            | Docker üzerinden                |
-| SAP Entegrasyon            | 🟡 Hazır (Bağlantı Yok) | REST/OData altyapısı kurulu     |
+| SAP Entegrasyon            | ✅ Aktif (Kuyruk Tabanlı) | REST adapter + Queue + Retry + KDV analizi tamamlandı |
 | Email Servisi (Gmail SMTP) | ✅ Çalışıyor            | Nodemailer + Gmail App Password |
 | Docker Compose             | ✅ Çalışıyor            | postgres + backend + web        |
 | K8s Config                 | ✅ Mevcut               | k8s/ dizininde yaml dosyaları   |
@@ -253,6 +262,53 @@ Claude_Proj1/
 - [x] **User Silme** — Cascade delete (tüm ilişkili kayıtlar temizlenir)
 - [x] **memory.md oluşturuldu** ve git push yapıldı
 
+### Oturum #5-6 (2026-03-03 — 2026-03-06)
+
+- [x] **SAP ECC Entegrasyon Tamamlama** — Multi-adapter, SapEccAdapter, ZCL_MASRAFF, KDV split, debug endpoint
+- [x] **SAP Status Visibility (Web + Mobile)** — FINANCE/ADMIN rolü tüm masrafları SAP OK/NOK/Bekliyor durumuyla görebilir
+  - Backend: `findAllAdmin()`, `findByReceiptNumber()`, enhanced `findById()` ile SAP status hesaplama (audit log bazlı)
+  - Backend: `GET /expenses/all`, `GET /expenses/by-receipt/:receiptNumber`, `POST /:id/retry-sap`, `POST /:id/debug-sap`
+  - Web: Masraf listesinde SapStatusBadge, FINANCE/ADMIN "Tüm Masraflar/Masraflarım" toggle, çalışan kolonu
+  - Web: Masraf detayında SAP Posting Paneli (OK: yeşil/belge no, FAILED: kırmızı/hata/retry/debug, PENDING: amber/retry)
+  - Mobile: Expense model (sapStatus, sapPostError, sapPostSuccess, user), API service (getAllAdmin, retrySap, debugSap)
+  - Mobile: ExpenseCard SAP badge ikonu, ExpenseFormScreen kapsamlı SAP paneli (retry/debug)
+  - Mobile: ExpenseListScreen FINANCE/ADMIN toggle (SegmentedButton)
+  - i18n: TR + EN çevirileri (web i18n.ts + mobile app_tr.arb/app_en.arb)
+
+### Oturum #7 (2026-03-03)
+
+- [x] **SAP Duplicate Posting Fix** — Fiş 14330020105400219 debug sonucu: SAP TYPE=S döndü ama DOCUMENT_NUMBER="$" (placeholder)
+  - `sap-ecc.adapter.ts`: TYPE=S fallback → invalid doc number varsa `SAP-OK-{timestamp}` kullanılır
+  - `sap-integration.service.ts`: Re-post guard → `sapDocumentNumber` varsa ConflictException 409 fırlat, retry loop'ta her denemede DB kontrol
+  - CostCenter `.padStart(10, '0')` — SAP'ın beklediği 10 haneli format
+  - RetryAttempt / DebugMode flag'leri payload'a eklendi (SAP ABAP tarafında duplicate log önleme)
+  - DB manuel düzeltme: expense → POSTED_TO_SAP + SAP-OK-MANUAL-FIX
+- [x] **KDV (VAT) Analizi** — SAP belgesinde 3. satır (KDV) eksik
+  - Node.js payload doğru: TaxAmount, TaxCode (V1), TaxGlAccount (1910001018) gönderiliyor
+  - Sorun ABAP tarafında: POST_EXPENSE sadece 2 kalem oluşturuyor (gider + karşı hesap)
+  - Çözüm ABAP kodu hazırlandı: Kalem 3 (KDV satırı) eklenmeli, Kalem 2'de NetAmount→GrossAmount düzeltilmeli
+  - Yeni ABAP struct alanları: netamount, grossamount, taxcode, taxglaccount, fisno, retryattempt, debugmode
+- [x] **SAP Kuyruk Aktivasyonu** — Dormant queue altyapısı aktif edildi
+  - `expenses.service.ts`: Finance onayı artık `sapQueue.enqueue(id)` çağırıyor (direkt `postExpenseToSap` yerine)
+  - `sap-queue.service.ts` tamamen yeniden yazıldı:
+    - Mükerrer koruma: PENDING/PROCESSING varsa tekrar ekleme
+    - İlk deneme hemen yapılır (bekletmeden)
+    - Cron: `*/1 * * * *` (her 1 dakika)
+    - MAX_ATTEMPTS: 5, Exponential backoff: 2^n dakika (2→4→8→16)
+    - DEAD_LETTER: 5 başarısız denemeden sonra + AuditLog kaydı
+    - Frontend uyumlu response: `{ pending, processing, completed, failed, deadLetter, items }`
+- [x] **Web SAP Queue Sayfası Güncellemesi** — `/dashboard/sap-queue`
+  - Full dark mode desteği (tüm `dark:` Tailwind class'ları)
+  - 30 saniye auto-refresh interval
+  - Yeni kolonlar: Çalışan, Tutar (para formatı), Fiş No
+  - Eye ikonu ile masraf detay sayfasına link
+  - Hata mesajı `<details>` ile açılır/kapanır
+  - İkon'lu istatistik kartları (Clock, Zap, CheckCircle2, XCircle, AlertOctagon)
+  - Bilgi footer: Kuyruk çalışma mantığı açıklaması
+- [x] **Web/Mobile 409 Retry Handling** — ConflictException yakalama, otomatik veri yenileme
+  - Web: Masraf listesi + detay sayfası retry 409 handling + fetchExpenses/fetchExpense in catch
+  - Mobile: `_retrySapPost` ApiException statusCode==409 handling + expense reload
+
 ---
 
 ## ⚙️ Ortam Değişkenleri (.env)
@@ -284,9 +340,11 @@ APP_BASE_URL=http://localhost:3001
 ## 🐛 Bilinen Sorunlar / Dikkat Edilecekler
 
 1. **Prisma IDE Lint Hataları** — `isApproved`, `isEmailConfirmed` alanları TypeScript tip hatası gösterebilir. Runtime'da sorun yok, `npm run build` başarılı.
-2. **SAP Bağlantısı** — SAP_BASE_URL, SAP_USERNAME, SAP_PASSWORD henüz boş.
+2. **SAP ABAP KDV Güncellemesi Bekliyor** — Node.js tarafı TaxAmount/TaxCode/TaxGlAccount gönderiyor ama ABAP POST_EXPENSE sadece 2 kalem oluşturuyor. 3. kalem (KDV satırı) ABAP'ta eklenmeli. Güncellenmiş ABAP kodu Oturum #7'de hazırlandı.
 3. **iOS Simülatör Scroll** — Users ekranında SingleChildScrollView+BouncingScrollPhysics uygulandı.
 4. **Kamera (Receipt)** — iOS simülatörde kamera sınırlı, galeri üzerinden test yapılmalı.
+5. **Backend test dosyası** — `expenses.service.spec.ts` CreateExpenseDto'da receiptNumber eksik (1 test tip hatası). Runtime'ı etkilemez.
+6. **SAP Kuyruk Cron** — Her 1 dakikada çalışır. Backend başlatıldığında otomatik aktif (@nestjs/schedule). DEAD_LETTER öğeler manuel retry gerektirir.
 
 ---
 

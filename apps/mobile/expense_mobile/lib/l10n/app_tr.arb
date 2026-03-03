@@ -143,5 +143,23 @@
     "placeholders": {
       "count": { "type": "int" }
     }
-  }
+  },
+  "sapStatus": "SAP Durumu",
+  "sapOk": "SAP OK",
+  "sapFailed": "SAP Başarısız",
+  "sapPending": "SAP Bekliyor",
+  "sapNotApplicable": "N/A",
+  "sapPostingPanel": "SAP Gönderimi",
+  "sapDocumentNumber": "SAP Doküman Numarası",
+  "sapErrorDetails": "Hata Detayları",
+  "sapSuccessDetails": "Başarı Detayları",
+  "sapRetrySend": "SAP Yeniden Gönder",
+  "sapDebugSend": "Debug",
+  "sapRetrying": "Yeniden gönderiliyor...",
+  "sapRetrySuccess": "SAP gönderimi başarılı!",
+  "sapRetryFailed": "SAP gönderimi başarısız",
+  "allExpenses": "Tüm Masraflar",
+  "myExpenses": "Masraflarım",
+  "employee": "Çalışan",
+  "receiptNo": "Fiş No"
 }

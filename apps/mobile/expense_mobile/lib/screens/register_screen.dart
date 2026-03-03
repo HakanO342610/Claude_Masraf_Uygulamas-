@@ -88,7 +88,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         actions: [
           TextButton.icon(
             onPressed: () {
-              localeProvider.setLocale(Locale(isTr ? 'en' : 'tr'));
+              localeProvider.toggle();
             },
             icon: const Icon(Icons.language, size: 20, color: Colors.white),
             label: Text(

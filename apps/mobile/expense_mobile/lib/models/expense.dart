@@ -9,9 +9,19 @@ class Expense {
   final String description;
   final String status;
   final String? sapDocumentNumber;
-  final double? taxAmount; // Added KDV
+  final double? taxAmount;
+  final String? receiptNumber;
   final String? createdAt;
   final String? updatedAt;
+
+  /// SAP posting status — computed by backend from audit logs
+  /// 'OK' | 'FAILED' | 'PENDING' | 'NOT_APPLICABLE'
+  final String? sapStatus;
+  final String? sapPostError;
+  final String? sapPostSuccess;
+
+  /// User info — populated when FINANCE/ADMIN views all expenses
+  final Map<String, dynamic>? user;
 
   Expense({
     required this.id,
@@ -25,14 +35,20 @@ class Expense {
     required this.status,
     this.sapDocumentNumber,
     this.taxAmount,
+    this.receiptNumber,
     this.createdAt,
     this.updatedAt,
+    this.sapStatus,
+    this.sapPostError,
+    this.sapPostSuccess,
+    this.user,
   });
 
   factory Expense.fromJson(Map<String, dynamic> json) {
     return Expense(
       id: json['id']?.toString() ?? '',
-      expenseDate: DateTime.tryParse(json['expenseDate'] ?? '') ?? DateTime.now(),
+      expenseDate:
+          DateTime.tryParse(json['expenseDate'] ?? '') ?? DateTime.now(),
       amount: (json['amount'] is num)
           ? (json['amount'] as num).toDouble()
           : double.tryParse(json['amount']?.toString() ?? '0') ?? 0.0,
@@ -46,8 +62,13 @@ class Expense {
       taxAmount: (json['taxAmount'] is num)
           ? (json['taxAmount'] as num).toDouble()
           : double.tryParse(json['taxAmount']?.toString() ?? '0'),
+      receiptNumber: json['receiptNumber'],
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
+      sapStatus: json['sapStatus'],
+      sapPostError: json['sapPostError'],
+      sapPostSuccess: json['sapPostSuccess'],
+      user: json['user'] is Map<String, dynamic> ? json['user'] : null,
     );
   }
 
@@ -72,6 +93,13 @@ class Expense {
   bool get isPostedToSap => status == 'POSTED_TO_SAP';
   bool get isPending => isSubmitted || isManagerApproved;
   bool get isApproved => isFinanceApproved || isPostedToSap;
+
+  // SAP convenience getters
+  bool get isSapOk => sapStatus == 'OK';
+  bool get isSapFailed => sapStatus == 'FAILED';
+  bool get isSapPending => sapStatus == 'PENDING';
+  String? get userName => user?['name'];
+  String? get userEmail => user?['email'];
 
   String get statusLabel {
     switch (status) {

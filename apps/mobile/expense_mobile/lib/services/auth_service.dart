@@ -33,11 +33,25 @@ class AuthService extends ChangeNotifier {
     try {
       final hasToken = await _api.hasToken();
       if (hasToken) {
-        _user = await _api.getSavedUser();
-        if (_user != null) {
-          _status = AuthStatus.authenticated;
+        // Uygulama her açılışında refresh token ile access token'ı yenile.
+        // Refresh token geçerliyse (30 gün) → kullanıcı hiç "session expired" görmez.
+        // Refresh token da süresi dolmuşsa → login ekranına yönlendir (hata banner'ı olmadan).
+        final online = await _api.isOnline();
+        if (online) {
+          // İnternet varsa token'ı yenile.
+          final refreshed = await _api.refreshSession();
+          if (refreshed) {
+            _user = await _api.getSavedUser();
+            _status = _user != null ? AuthStatus.authenticated : AuthStatus.unauthenticated;
+          } else {
+            // Online + refresh başarısız → gerçekten süresi dolmuş → sessizce logout.
+            await _api.clearAuth();
+            _status = AuthStatus.unauthenticated;
+          }
         } else {
-          _status = AuthStatus.unauthenticated;
+          // Offline → mevcut kullanıcı verisiyle devam et, cache'den çalış.
+          _user = await _api.getSavedUser();
+          _status = _user != null ? AuthStatus.authenticated : AuthStatus.unauthenticated;
         }
       } else {
         _status = AuthStatus.unauthenticated;

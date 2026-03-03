@@ -53,6 +53,21 @@ export class SapIntegrationService implements OnModuleInit {
       );
     }
 
+    // sapDocumentNumber zaten varsa (ama status güncellenmemişse) tekrar gönderme
+    if (expense.sapDocumentNumber) {
+      this.logger.warn(
+        `Expense ${expenseId} already has sapDocumentNumber=${expense.sapDocumentNumber}, fixing status...`,
+      );
+      // Status'u düzelt ve hata fırlat
+      await this.prisma.expense.update({
+        where: { id: expenseId },
+        data: { status: ExpenseStatus.POSTED_TO_SAP },
+      });
+      throw new ConflictException(
+        `Expense already posted to SAP: ${expense.sapDocumentNumber}`,
+      );
+    }
+
     if (
       expense.status !== ExpenseStatus.MANAGER_APPROVED &&
       expense.status !== ExpenseStatus.FINANCE_APPROVED
@@ -77,6 +92,7 @@ export class SapIntegrationService implements OnModuleInit {
       costCenter: expense.costCenter,
       projectCode: expense.projectCode,
       description: expense.description,
+      receiptNumber: (expense as any).receiptNumber || null,
       reference: `EXP-${expense.id.slice(0, 8).toUpperCase()}`,
       user: {
         sapEmployeeId: expense.user.sapEmployeeId,
@@ -89,7 +105,24 @@ export class SapIntegrationService implements OnModuleInit {
 
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
       try {
+        // Tekrar denemeden önce DB'den expense'i kontrol et — arada başarılı olmuş olabilir
+        if (attempt > 1) {
+          const freshExpense = await this.prisma.expense.findUnique({ where: { id: expenseId } });
+          if (freshExpense?.status === ExpenseStatus.POSTED_TO_SAP || freshExpense?.sapDocumentNumber) {
+            this.logger.warn(`Expense ${expenseId} already posted (attempt ${attempt} cancelled)`);
+            return {
+              sapDocumentNumber: freshExpense.sapDocumentNumber || 'ALREADY_POSTED',
+              status: 'Already Posted',
+              sapType: this.adapterFactory.getSapType(),
+              expenseId,
+            };
+          }
+        }
+
         this.logger.log(`SAP posting attempt ${attempt} for expense ${expenseId}`);
+
+        // Retry attempt bilgisini payload'a ekle — SAP tarafında tekrar log yazmasını engeller
+        (payload as any).retryAttempt = attempt;
 
         const result = await this.adapter.postExpense(payload);
 
@@ -106,7 +139,15 @@ export class SapIntegrationService implements OnModuleInit {
             userId: expense.userId,
             expenseId,
             action: 'POSTED_TO_SAP',
-            details: `SAP Document: ${result.sapDocumentNumber} | Type: ${this.adapterFactory.getSapType()}`,
+            details: [
+              `SAP Belge No: ${result.sapDocumentNumber}`,
+              result.fiscalYear ? `Mali Yıl: ${result.fiscalYear}` : null,
+              `SAP Türü: ${this.adapterFactory.getSapType()}`,
+              `Deneme: ${attempt}/${this.MAX_RETRIES}`,
+              `Tutar: ${expense.amount} ${expense.currency}`,
+              `Fiş No: ${(expense as any).receiptNumber || '-'}`,
+              `Çalışan: ${expense.user.name}`,
+            ].filter(Boolean).join(' | '),
           },
         });
 
@@ -132,13 +173,82 @@ export class SapIntegrationService implements OnModuleInit {
         userId: expense.userId,
         expenseId,
         action: 'SAP_POST_FAILED',
-        details: lastError?.message || 'Unknown error',
+        details: [
+          `${this.MAX_RETRIES} denemeden sonra başarısız`,
+          `Hata: ${lastError?.message || 'Bilinmeyen hata'}`,
+          `SAP Türü: ${this.adapterFactory.getSapType()}`,
+          `Tutar: ${expense.amount} ${expense.currency}`,
+          `Fiş No: ${(expense as any).receiptNumber || '-'}`,
+          `Çalışan: ${expense.user.name}`,
+          `Zaman: ${new Date().toISOString()}`,
+        ].join(' | '),
       },
     });
 
     throw new BadRequestException(
       `Failed to post to SAP after ${this.MAX_RETRIES} attempts: ${lastError?.message}`,
     );
+  }
+
+  // ─── Debug: SAP raw response (DB'ye hiçbir şey yazmaz) ───────────────────
+  // ABAP debug modunda iken bu endpoint'i çağır — tam ham yanıt döner.
+
+  async debugRawPost(expenseId: string) {
+    const expense = await this.prisma.expense.findUnique({
+      where: { id: expenseId },
+      include: { user: true },
+    });
+    if (!expense) throw new NotFoundException('Expense not found');
+
+    const grossAmount = Number(expense.amount);
+    const taxAmount   = expense.taxAmount
+      ? Number(expense.taxAmount)
+      : +(grossAmount * this.DEFAULT_TAX_RATE).toFixed(2);
+
+    const payload: SapExpensePayload = {
+      id: expense.id,
+      expenseDate: expense.expenseDate,
+      amount: grossAmount,
+      taxAmount,
+      currency: expense.currency,
+      category: expense.category,
+      costCenter: expense.costCenter,
+      projectCode: expense.projectCode,
+      description: expense.description,
+      receiptNumber: (expense as any).receiptNumber || null,
+      reference: `EXP-${expense.id.slice(0, 8).toUpperCase()}`,
+      user: {
+        sapEmployeeId: expense.user.sapEmployeeId,
+        name: expense.user.name,
+        department: expense.user.department,
+      },
+    };
+
+    // Debug modunda SAP'ın log yazmamasını ve BAPI commit yapmamasını sağla
+    (payload as any).debugMode = true;
+
+    this.logger.log(`[DEBUG] Payload gönderiliyor: ${JSON.stringify(payload)}`);
+
+    let result: any;
+    let errorDetail: any;
+
+    try {
+      result = await this.adapter.postExpense(payload);
+    } catch (err: any) {
+      errorDetail = {
+        message: err.message,
+        stack: err.stack?.split('\n').slice(0, 5).join('\n'),
+      };
+    }
+
+    return {
+      expenseId,
+      receiptNumber: (expense as any).receiptNumber,
+      payload,
+      sapResult: result ?? null,
+      sapError: errorDetail ?? null,
+      dbNotUpdated: true,
+    };
   }
 
   // Kept for backward compatibility with queue service
