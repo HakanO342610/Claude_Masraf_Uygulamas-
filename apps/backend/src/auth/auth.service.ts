@@ -97,6 +97,10 @@ export class AuthService {
       throw new ForbiddenException('Your account is pending admin approval');
     }
 
+    if (!user.isActive) {
+      throw new ForbiddenException('Your account has been deactivated');
+    }
+
     return this.generateTokens(user.id, user.email, user.role);
   }
 

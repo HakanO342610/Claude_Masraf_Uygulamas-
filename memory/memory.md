@@ -1,6 +1,6 @@
 # 📋 Project Memory — Expense Management App
 
-> **Son Güncelleme:** 2026-03-03 (Oturum #7)
+> **Son Güncelleme:** 2026-03-04 (Oturum #8)
 > **Proje:** Claude_Proj1 — Kurumsal Masraf Yönetimi & SAP Entegrasyon Platformu
 
 ---
@@ -121,6 +121,50 @@
   - Mobile: flutter_localizations + l10n.yaml + app_tr.arb + app_en.arb, varsayılan: TR
 - [x] Audit log ekranı (admin) → GET /users/admin/audit-logs (sayfalı, filtreli) + Web: /dashboard/admin/audit-logs — 2026-02-28
 
+### FAZ 8.5 — Identity & HR Entegrasyonu + Multi-Tenant Org Modeli 🟡 TAMAMLANDI (2026-03-04)
+
+- [x] **Prisma Schema** — Organization modeli + User identity alanları migration uygulandı
+  - Organization: id, name, slug, plan, erpType/Config (encrypted), idpType/Config (encrypted), lastSyncAt/Stats
+  - User: + isActive, externalId, externalSource, lastSyncedAt, organizationId (Organization FK)
+  - Migration: `20260304102517_add_organization_identity_sync`
+- [x] **CryptoService** — AES-256-GCM şifreleme (`apps/backend/src/common/crypto.service.ts`)
+  - `ENCRYPTION_KEY` env (32 byte hex), encryptJson/decryptJson
+- [x] **IIdentityAdapter** — Interface + NullAdapter + SapHcmAdapter + AzureAdAdapter + IdentityAdapterFactory
+  - `apps/backend/src/identity/adapters/`
+  - ZMASRAFF_S_USER alanları: PERSONNELCODE, NAME, SURNAME, EMAIL, DEPARTMENT, TITLE, MANAGEREMAIL (email!), ISACTIVE ('X')
+  - Response: `{ PERSONS: [...] }` wrapper
+  - `managerEmail` alanı interface'e eklendi (SAP HCM için — ID değil email)
+- [x] **UserSyncService** — Gece 01:00 cron + `POST /identity/sync` endpoint
+  - Pass 1: Upsert (create: isApproved=true, isEmailConfirmed=true, random bcrypt pw)
+  - Pass 2: Manager hiyerarşisi — SAP HCM: email ile, Azure AD/LDAP: externalId ile
+  - AuditLog: IDENTITY_SYNC aksiyonu
+  - Multi-tenant: `syncForEnv()` + `syncForOrg(orgId)` ayrı metotlar
+- [x] **IdentityModule** — controller (POST /identity/sync, GET /identity/test-connection) + AppModule kaydı
+- [x] **OrganizationModule** — CRUD (GET/POST /organizations, PATCH /organizations/:id) + AppModule kaydı
+- [x] **Auth isActive** — login'de `if (!user.isActive) throw ForbiddenException`
+- [x] **Web Sync UI** — `/dashboard/admin` sayfasına "HR / Identity Sync" paneli eklendi
+  - "Sync Yap" butonu + "Bağlantı Testi" butonu + sonuç banner
+- [x] **api.ts** — `identityApi` + `orgApi` nesneleri eklendi
+
+**Yeni Env Değişkenleri:**
+- `IDENTITY_PROVIDER`: `SAP_HCM` | `AZURE_AD` | `LDAP` | `NONE` (default: NONE)
+- `ENCRYPTION_KEY`: 32 byte hex (org config şifreleme)
+- Azure AD: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
+
+**Yeni Dosyalar:**
+- `apps/backend/src/common/crypto.service.ts`
+- `apps/backend/src/identity/adapters/identity-adapter.interface.ts`
+- `apps/backend/src/identity/adapters/null.adapter.ts`
+- `apps/backend/src/identity/adapters/sap-hcm.adapter.ts`
+- `apps/backend/src/identity/adapters/azure-ad.adapter.ts`
+- `apps/backend/src/identity/adapters/identity-adapter.factory.ts`
+- `apps/backend/src/identity/user-sync.service.ts`
+- `apps/backend/src/identity/identity.controller.ts`
+- `apps/backend/src/identity/identity.module.ts`
+- `apps/backend/src/organization/organization.service.ts`
+- `apps/backend/src/organization/organization.controller.ts`
+- `apps/backend/src/organization/organization.module.ts`
+
 ### FAZ 9 — Test & Kalite ✅ TAMAMLANDI (2026-02-28)
 
 - [x] Unit testler (backend services) — 5 suite, 44 test ✅
@@ -207,13 +251,18 @@ Claude_Proj1/
 
 ## 🔑 Veritabanı Modeli (Prisma)
 
-**Ana Tablolar:** User, Expense, Approval, Receipt, AuditLog, RefreshToken, SapPostingQueue
+**Ana Tablolar:** Organization, User, Expense, Approval, Receipt, AuditLog, RefreshToken, SapPostingQueue, SapMasterData, PolicyRule
 
 **User Model Alanları:**
 
 - id, sapEmployeeId, name, email, password, department, role, managerId
 - `isApproved` (Boolean) — Admin onayı
 - `isEmailConfirmed` (Boolean) — Email doğrulaması
+- `isActive` (Boolean) — IDP sync'te false → login engellenir
+- `externalId` (String?) — HR sistemindeki ID (PERSONNELCODE, Azure ObjectId)
+- `externalSource` (String?) — 'SAP_HCM' | 'AZURE_AD' | 'LDAP' | 'ENV'
+- `lastSyncedAt` (DateTime?) — Son sync zamanı
+- `organizationId` (String?) — Multi-tenant FK
 - `confirmationToken` (String) — Email doğrulama tokeni
 
 **Roller:** ADMIN, MANAGER, FINANCE, EMPLOYEE
@@ -308,6 +357,16 @@ Claude_Proj1/
 - [x] **Web/Mobile 409 Retry Handling** — ConflictException yakalama, otomatik veri yenileme
   - Web: Masraf listesi + detay sayfası retry 409 handling + fetchExpenses/fetchExpense in catch
   - Mobile: `_retrySapPost` ApiException statusCode==409 handling + expense reload
+
+### Oturum #8 (2026-03-04)
+
+- [x] **SapHcmAdapter** — ZMASRAFF_S_USER doğru alan eşleştirmesi: PERSONNELCODE, NAME, SURNAME, EMAIL, DEPARTMENT, TITLE, MANAGEREMAIL, ISACTIVE='X'. Response: `{ PERSONS: [...] }` wrapper. Eski placeholder alanlar (PERNR, ORGEH, STAT2) kaldırıldı.
+- [x] **UserSyncService Pass 2 managerEmail** — SAP HCM `managerEmail` ile, Azure AD/LDAP `managerExternalId` ile hiyerarşi kurulur
+- [x] **Auth isActive** — `auth.service.ts` login'de `if (!user.isActive) throw ForbiddenException('Your account has been deactivated')`
+- [x] **IdentityModule** — `identity.controller.ts` + `identity.module.ts` oluşturuldu ve AppModule'a kaydedildi
+- [x] **OrganizationModule** — `organization.service.ts` + `organization.controller.ts` + `organization.module.ts` + AppModule kaydı
+- [x] **api.ts** — `identityApi` + `orgApi` eklendi
+- [x] **Admin Sayfa Sync UI** — "HR / Identity Sync" paneli: Sync Yap + Bağlantı Testi + sonuç banner
 
 ---
 

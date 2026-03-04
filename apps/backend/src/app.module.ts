@@ -16,6 +16,8 @@ import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { PushModule } from './push/push.module';
 import { PolicyModule } from './policy/policy.module';
+import { IdentityModule } from './identity/identity.module';
+import { OrganizationModule } from './organization/organization.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { PolicyModule } from './policy/policy.module';
     MailModule,
     PushModule,
     PolicyModule,
+    IdentityModule,
+    OrganizationModule,
   ],
   providers: [
     {

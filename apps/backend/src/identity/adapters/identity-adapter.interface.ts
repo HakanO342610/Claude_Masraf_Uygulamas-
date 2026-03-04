@@ -4,7 +4,8 @@ export interface IIdentityEmployee {
   email: string;
   department?: string;
   jobTitle?: string;
-  managerExternalId?: string;  // Yöneticinin externalId'si (hiyerarşi için)
+  managerExternalId?: string;  // Yöneticinin externalId'si (Azure AD, LDAP)
+  managerEmail?: string;       // Yöneticinin e-postası (SAP HCM — MANAGEREMAIL alanı)
   sapEmployeeId?: string;      // SAP FI posting için personel numarası (SAP HCM'de = externalId)
   isActive: boolean;
 }

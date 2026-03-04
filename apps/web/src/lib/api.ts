@@ -181,4 +181,18 @@ export const sapApi = {
   debugRawPost: (id: string) => api.post(`/integration/sap/debug-raw/${id}`),
 };
 
+export const identityApi = {
+  sync: () => api.post('/identity/sync'),
+  syncOrg: (orgId: string) => api.post(`/identity/sync/org/${orgId}`),
+  testConnection: () => api.get('/identity/test-connection'),
+  testConnectionOrg: (orgId: string) => api.get(`/identity/test-connection/org/${orgId}`),
+};
+
+export const orgApi = {
+  getAll: () => api.get('/organizations'),
+  getById: (id: string) => api.get(`/organizations/${id}`),
+  create: (data: any) => api.post('/organizations', data),
+  update: (id: string, data: any) => api.patch(`/organizations/${id}`, data),
+};
+
 export default api;

@@ -10,8 +10,11 @@ import {
   Check,
   X,
   Trash2,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
-import { usersApi } from '@/lib/api';
+import { usersApi, identityApi } from '@/lib/api';
 import { useI18nStore } from '@/lib/store';
 
 interface User {
@@ -56,6 +59,12 @@ export default function AdminPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // Identity sync state
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
+  const [connectionResult, setConnectionResult] = useState<any>(null);
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -92,6 +101,33 @@ export default function AdminPage() {
       setError(err.response?.data?.message || 'Kullanıcı silinemedi');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await identityApi.sync();
+      setSyncResult({ ok: true, data: res.data });
+      await fetchUsers();
+    } catch (err: any) {
+      setSyncResult({ ok: false, error: err.response?.data?.message || 'Sync başarısız' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setConnectionResult(null);
+    try {
+      const res = await identityApi.testConnection();
+      setConnectionResult({ ok: true, ...res.data });
+    } catch (err: any) {
+      setConnectionResult({ ok: false, error: err.response?.data?.message || 'Bağlantı testi başarısız' });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -160,6 +196,54 @@ export default function AdminPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* Identity Sync Panel */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">HR / Identity Sync</h3>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+          >
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {syncing ? 'Sync Yapılıyor...' : 'Sync Yap'}
+          </button>
+          <button
+            onClick={handleTestConnection}
+            disabled={testing}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+          >
+            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
+            {testing ? 'Test Ediliyor...' : 'Bağlantı Testi'}
+          </button>
+        </div>
+
+        {connectionResult && (
+          <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${connectionResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+            {connectionResult.ok ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+            {connectionResult.ok
+              ? `Bağlı — ${connectionResult.systemInfo || 'IDP hazır'}`
+              : `Bağlantı hatası: ${connectionResult.error}`}
+          </div>
+        )}
+
+        {syncResult && (
+          <div className={`mt-3 rounded-lg px-3 py-2 text-sm ${syncResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+            {syncResult.ok ? (
+              <span>
+                Sync tamamlandı —{' '}
+                <strong>{syncResult.data.created}</strong> eklendi,{' '}
+                <strong>{syncResult.data.updated}</strong> güncellendi,{' '}
+                <strong>{syncResult.data.deactivated}</strong> deaktive edildi
+                {syncResult.data.errors > 0 && `, ${syncResult.data.errors} hata`}
+              </span>
+            ) : (
+              <span>Sync hatası: {syncResult.error}</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">

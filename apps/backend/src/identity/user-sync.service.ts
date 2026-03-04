@@ -172,12 +172,21 @@ export class UserSyncService {
     }
 
     // Pass 2: Manager hiyerarşisi
+    // SAP HCM → managerEmail kullanır (MANAGEREMAIL alanı)
+    // Azure AD / LDAP → managerExternalId kullanır
     for (const emp of employees) {
-      if (!emp.managerExternalId || !emp.externalId) continue;
+      if (!emp.externalId) continue;
+      const hasManagerRef = emp.managerEmail || emp.managerExternalId;
+      if (!hasManagerRef) continue;
       try {
-        const user    = await this.prisma.user.findFirst({ where: { externalId: emp.externalId } });
-        const manager = await this.prisma.user.findFirst({ where: { externalId: emp.managerExternalId } });
-        if (user && manager && user.managerId !== manager.id) {
+        const user = await this.prisma.user.findFirst({ where: { externalId: emp.externalId } });
+        if (!user) continue;
+
+        const manager = emp.managerEmail
+          ? await this.prisma.user.findFirst({ where: { email: emp.managerEmail } })
+          : await this.prisma.user.findFirst({ where: { externalId: emp.managerExternalId! } });
+
+        if (manager && user.managerId !== manager.id) {
           await this.prisma.user.update({
             where: { id: user.id },
             data:  { managerId: manager.id },
