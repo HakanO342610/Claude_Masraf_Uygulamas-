@@ -113,7 +113,7 @@ export default function NewExpensePage() {
           fieldsUpdated++;
         }
         if (data.ocrData.extractedVendor) {
-          setValue('description', `Expense at ${data.ocrData.extractedVendor}`, { shouldValidate: true });
+          setValue('description', data.ocrData.extractedVendor, { shouldValidate: true });
           fieldsUpdated++;
         }
         if (data.ocrData.currency) {

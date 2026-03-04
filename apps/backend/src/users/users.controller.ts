@@ -25,8 +25,8 @@ export class UsersController {
   constructor(private usersService: UsersService) {}
 
   @Get()
-  @Roles('ADMIN', 'MANAGER')
-  @ApiOperation({ summary: 'List all users' })
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'List all users (admin only)' })
   findAll() {
     return this.usersService.findAll();
   }
@@ -38,7 +38,7 @@ export class UsersController {
     @CurrentUser('id') currentUserId: string,
     @CurrentUser('role') currentRole: string,
   ) {
-    if (id !== currentUserId && !['ADMIN', 'MANAGER'].includes(currentRole)) {
+    if (id !== currentUserId && currentRole !== 'ADMIN') {
       throw new ForbiddenException('Access denied');
     }
     return this.usersService.findById(id);

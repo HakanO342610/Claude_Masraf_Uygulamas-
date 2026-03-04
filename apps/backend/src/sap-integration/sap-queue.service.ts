@@ -184,6 +184,9 @@ export class SapQueueService {
   }
 
   // ─── Manuel retry (kuyruk sayfasından) ────────────────────────────────
+  // attempts sıfırlanmaz — manuel retry tek seferlik bir denemedir.
+  // Başarısız olursa MAX_ATTEMPTS'e ulaşıldığı için DEAD_LETTER'a düşer,
+  // cron bir daha otomatik olarak tetiklemez.
   async retryItem(queueId: string) {
     const item = await this.prisma.sapPostingQueue.findUnique({
       where: { id: queueId },
@@ -191,22 +194,25 @@ export class SapQueueService {
 
     if (!item) return null;
 
+    // attempts'i MAX_ATTEMPTS-1'e çek: bu deneme de başarısız olursa
+    // newAttempts = MAX_ATTEMPTS → isFinalAttempt = true → DEAD_LETTER
+    // cron bir daha bu öğeyi otomatik olarak almaz.
     await this.prisma.sapPostingQueue.update({
       where: { id: queueId },
       data: {
         status: 'PENDING',
-        attempts: 0,
+        attempts: this.MAX_ATTEMPTS - 1,
         lastError: null,
         nextRetry: null,
       },
     });
 
-    // Hemen işle
+    // Hemen işle (cron bekleme)
     this.processItemById(queueId).catch((err) => {
       this.logger.warn(`Manual retry failed for ${queueId}: ${err.message}`);
     });
 
-    return { message: 'Kuyruk öğesi tekrar deneme için sıraya alındı', queueId };
+    return { message: 'Kuyruk öğesi manuel olarak bir kez deneniyor', queueId };
   }
 
   // ─── Kuyruk durumu (frontend uyumlu format) ───────────────────────────

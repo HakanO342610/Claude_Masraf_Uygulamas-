@@ -7,29 +7,62 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("BASIC")
+  // ERP config (AES-256-GCM encrypted JSON string)
+  erpType   String   @default("NONE")
+  erpConfig String?  @map("erp_config")
+  // Identity Provider config (AES-256-GCM encrypted JSON string)
+  idpType   String   @default("NONE") @map("idp_type")
+  idpConfig String?  @map("idp_config")
+  // Sync state
+  lastSyncAt    DateTime? @map("last_sync_at")
+  lastSyncStats Json?     @map("last_sync_stats")
+
+  users     User[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("organizations")
+}
+
 model User {
-  id                String         @id @default(uuid())
-  sapEmployeeId     String?        @unique @map("sap_employee_id")
+  id                String        @id @default(uuid())
+  sapEmployeeId     String?       @unique @map("sap_employee_id")
   name              String
-  email             String         @unique
+  email             String        @unique
   password          String
   department        String?
-  role              UserRole       @default(EMPLOYEE)
-  managerId         String?        @map("manager_id")
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  confirmationToken String?        @map("confirmation_token")
-  isApproved        Boolean        @default(false) @map("is_approved")
-  isEmailConfirmed  Boolean        @default(false) @map("is_email_confirmed")
-  fcmToken          String?        @map("fcm_token")
+  role              UserRole      @default(EMPLOYEE)
+  managerId         String?       @map("manager_id")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  confirmationToken String?       @map("confirmation_token")
+  isApproved        Boolean       @default(false) @map("is_approved")
+  isEmailConfirmed  Boolean       @default(false) @map("is_email_confirmed")
+  isActive          Boolean       @default(true) @map("is_active")
+  fcmToken          String?       @map("fcm_token")
+  // Identity sync fields
+  externalId        String?       @map("external_id")
+  externalSource    String?       @map("external_source")
+  lastSyncedAt      DateTime?     @map("last_synced_at")
+  // Multi-tenant
+  organizationId    String?       @map("organization_id")
+  organization      Organization? @relation(fields: [organizationId], references: [id])
+
   approvals         Approval[]
   auditLogs         AuditLog[]
   expenses          Expense[]
   receipts          Receipt[]
   refreshTokens     RefreshToken[]
-  manager           User?          @relation("UserManager", fields: [managerId], references: [id])
-  subordinates      User[]         @relation("UserManager")
+  manager           User?         @relation("UserManager", fields: [managerId], references: [id])
+  subordinates      User[]        @relation("UserManager")
 
+  @@index([organizationId])
+  @@index([externalId, externalSource])
   @@map("users")
 }
 

@@ -9,6 +9,7 @@ import {
   Pencil,
   Check,
   X,
+  Trash2,
 } from 'lucide-react';
 import { usersApi } from '@/lib/api';
 import { useI18nStore } from '@/lib/store';
@@ -52,6 +53,8 @@ export default function AdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');
   const [editDept, setEditDept] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -77,6 +80,19 @@ export default function AdminPage() {
 
   const cancelEdit = () => {
     setEditingId(null);
+  };
+
+  const deleteUser = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await usersApi.deleteUser(id);
+      setDeleteConfirmId(null);
+      await fetchUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Kullanıcı silinemedi');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const saveEdit = async (id: string) => {
@@ -229,13 +245,38 @@ export default function AdminPage() {
                         <X className="h-4 w-4" />
                       </button>
                     </div>
+                  ) : deleteConfirmId === user.id ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <span className="text-xs text-red-600 mr-1">Emin misiniz?</span>
+                      <button
+                        onClick={() => deleteUser(user.id)}
+                        disabled={deletingId === user.id}
+                        className="rounded p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {deletingId === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="rounded p-1.5 text-gray-400 hover:bg-gray-100"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   ) : (
-                    <button
-                      onClick={() => startEdit(user)}
-                      className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => startEdit(user)}
+                        className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirmId(user.id)}
+                        className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

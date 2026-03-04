@@ -129,6 +129,8 @@ export const expenseApi = {
   getPendingApprovals: () => api.get('/expenses/pending-approvals'),
   retrySap: (id: string) => api.post(`/expenses/${id}/retry-sap`),
   debugSap: (id: string) => api.post(`/expenses/${id}/debug-sap`),
+  sapFixUpdate: (id: string, data: Record<string, any>) =>
+    api.patch(`/expenses/${id}/sap-fix`, data),
 };
 
 export const reportsApi = {
@@ -165,6 +167,7 @@ export const usersApi = {
   updateRole: (id: string, role: string) => api.patch(`/users/${id}/role`, { role }),
   assignManager: (id: string, managerId: string) =>
     api.patch(`/users/${id}/manager`, { managerId }),
+  deleteUser: (id: string) => api.delete(`/users/${id}`),
 };
 
 export const sapApi = {

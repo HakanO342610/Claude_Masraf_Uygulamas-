@@ -140,4 +140,16 @@ export class ExpensesController {
   debugSap(@Param('id') id: string) {
     return this.sapService.debugRawPost(id);
   }
+
+  @Patch(':id/sap-fix')
+  @UseGuards(RolesGuard)
+  @Roles('FINANCE', 'ADMIN')
+  @ApiOperation({ summary: 'Finance/Admin: fix expense fields and re-send to SAP' })
+  sapFixUpdate(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateExpenseDto,
+  ) {
+    return this.expensesService.sapFixUpdate(id, userId, dto);
+  }
 }

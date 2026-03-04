@@ -46,13 +46,14 @@ function SapStatusBadge({ sapStatus, compact }: { sapStatus?: string; compact?: 
 
   const styles: Record<string, { bg: string; text: string; icon: typeof CheckCircle2 }> = {
     OK: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-700 dark:text-emerald-400', icon: CheckCircle2 },
+    FALLBACK: { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-400', icon: XCircle },
     FAILED: { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-400', icon: XCircle },
     PENDING: { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-400', icon: Clock },
   };
 
   const style = styles[sapStatus] || styles.PENDING;
   const Icon = style.icon;
-  const label = sapStatus === 'OK' ? 'SAP OK' : sapStatus === 'FAILED' ? 'SAP NOK' : 'SAP ⏳';
+  const label = sapStatus === 'OK' ? 'SAP OK' : sapStatus === 'FAILED' || sapStatus === 'FALLBACK' ? 'SAP NOK' : 'SAP ⏳';
 
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${style.bg} ${style.text}`}>
@@ -306,7 +307,7 @@ export default function ExpensesPage() {
                             </button>
                           </>
                         )}
-                        {isElevated && expense.sapStatus === 'FAILED' && (
+                        {isElevated && (expense.sapStatus === 'FAILED' || expense.sapStatus === 'FALLBACK') && (
                           <button
                             onClick={async () => {
                               try {

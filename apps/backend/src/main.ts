@@ -2,6 +2,9 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { join } from 'path';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const serveStatic = require('serve-static');
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,6 +14,9 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+
+  // Serve uploaded receipts/files statically at /uploads/*
+  app.use('/uploads', serveStatic(join(process.cwd(), 'uploads'), { index: false }));
 
   // Security headers
   app.use(helmet());

@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Save, Send, ArrowLeft, Loader2, AlertCircle, CheckCircle2, XCircle, Clock, RotateCw, Bug } from 'lucide-react';
+import { Save, Send, ArrowLeft, Loader2, AlertCircle, CheckCircle2, XCircle, Clock, RotateCw, Bug, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { expenseApi } from '@/lib/api';
 import { useI18nStore, useAuthStore } from '@/lib/store';
@@ -75,6 +75,9 @@ export default function EditExpensePage() {
   const [sapRetrying, setSapRetrying] = useState(false);
   const [sapRetryResult, setSapRetryResult] = useState<string | null>(null);
   const [debugResult, setDebugResult] = useState<any>(null);
+  const [sapFixMode, setSapFixMode] = useState(false);
+  const [sapFixSaving, setSapFixSaving] = useState(false);
+  const [sapFixError, setSapFixError] = useState<string | null>(null);
 
   const {
     register,
@@ -168,7 +171,56 @@ export default function EditExpensePage() {
     );
   }
 
-  // Non-DRAFT: read-only view
+  // SAP Fix: Kaydet + Gönder
+  const sapFixAndRetry = async (data: ExpenseFormData) => {
+    setSapFixError(null);
+    setSapFixSaving(true);
+    try {
+      await expenseApi.sapFixUpdate(id, {
+        expenseDate: data.expenseDate,
+        amount: data.amount,
+        taxAmount: data.taxAmount,
+        currency: data.currency,
+        category: data.category,
+        costCenter: data.costCenter,
+        projectCode: data.projectCode,
+        description: data.description,
+      });
+      setSapRetrying(true);
+      setSapRetryResult(null);
+      const res = await expenseApi.retrySap(id);
+      setSapRetryResult('SAP\'a başarıyla gönderildi — ' + (res.data?.sapDocumentNumber || ''));
+      const response = await expenseApi.getById(id);
+      const updated = response.data?.data ?? response.data;
+      setExpenseData(updated);
+      reset({
+        expenseDate: updated.expenseDate?.split('T')[0] ?? '',
+        amount: updated.amount,
+        taxAmount: updated.taxAmount ?? undefined,
+        currency: updated.currency,
+        category: updated.category,
+        costCenter: updated.costCenter ?? '',
+        projectCode: updated.projectCode ?? '',
+        description: updated.description ?? '',
+        receiptNumber: updated.receiptNumber ?? '',
+      });
+      setSapFixMode(false);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message;
+      setSapFixError('SAP Hatası: ' + msg);
+      try {
+        const response = await expenseApi.getById(id);
+        setExpenseData(response.data?.data ?? response.data);
+      } catch (_) {}
+    } finally {
+      setSapFixSaving(false);
+      setSapRetrying(false);
+    }
+  };
+
+  const isSapError = expenseData?.sapStatus === 'FAILED' || expenseData?.sapStatus === 'FALLBACK';
+
+  // Non-DRAFT: read-only view (with SAP Fix mode for Finance/Admin)
   if (expenseData && expenseData.status !== 'DRAFT') {
     return (
       <div className="mx-auto max-w-2xl space-y-6">
@@ -180,14 +232,145 @@ export default function EditExpensePage() {
             <ArrowLeft className="h-4 w-4" />
             {t.backToExpenses}
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{t.expenseDetails}</h2>
             <ExpenseStatusBadge status={expenseData.status} />
+            {isElevated && isSapError && !sapFixMode && (
+              <button
+                onClick={() => { setSapFixMode(true); setSapFixError(null); setSapRetryResult(null); }}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-700 px-3 py-1.5 text-xs font-medium text-orange-700 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                SAP Alanlarını Düzenle
+              </button>
+            )}
+            {sapFixMode && (
+              <button
+                onClick={() => { setSapFixMode(false); setSapFixError(null); }}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                İptal
+              </button>
+            )}
           </div>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {t.expenseNotEditable}
+            {sapFixMode ? 'SAP hatasını düzeltmek için alanları güncelleyin ve gönderin.' : t.expenseNotEditable}
           </p>
         </div>
+
+        {/* ─── SAP Fix Edit Form ─── */}
+        {sapFixMode && isElevated && (
+          <div className="rounded-xl border-2 border-orange-300 dark:border-orange-700 bg-orange-50/50 dark:bg-orange-900/10 p-6 space-y-5">
+            <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">
+              SAP Düzeltme Modu — Alanları düzenleyip "Kaydet ve SAP'a Gönder" butonuna basın
+            </p>
+
+            {sapFixError && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <span className="whitespace-pre-wrap">{sapFixError}</span>
+              </div>
+            )}
+            {sapRetryResult && (
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-900/20 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                {sapRetryResult}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.date}</label>
+                <input type="date" {...register('expenseDate')}
+                  className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.amount} (KDV hariç)</label>
+                <input type="number" step="0.01" min="0" {...register('amount')}
+                  className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.kdvVat}</label>
+                <input type="number" step="0.01" min="0" {...register('taxAmount')}
+                  className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.currency}</label>
+                <select {...register('currency')}
+                  className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20">
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.category}</label>
+                <select {...register('category')}
+                  className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20">
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-orange-600 dark:text-orange-400 mb-1 font-semibold">
+                  {t.costCenter} ← SAP Masraf Merkezi
+                </label>
+                <input type="text" placeholder="örn. CC-1001" {...register('costCenter')}
+                  className="block w-full rounded-lg border-2 border-orange-300 dark:border-orange-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.projectCode}</label>
+                <input type="text" placeholder="örn. PRJ-2024-001" {...register('projectCode')}
+                  className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t.description}</label>
+              <textarea rows={2} {...register('description')}
+                className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 resize-none" />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                disabled={sapFixSaving}
+                onClick={handleSubmit(sapFixAndRetry)}
+                className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {sapFixSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                Kaydet ve SAP'a Gönder
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setDebugResult(null);
+                  try {
+                    await expenseApi.sapFixUpdate(id, {
+                      expenseDate: (document.querySelector('input[type=date]') as any)?.value,
+                      costCenter: (document.querySelector('input[placeholder*="CC"]') as any)?.value,
+                      projectCode: (document.querySelector('input[placeholder*="PRJ"]') as any)?.value,
+                    });
+                    const res = await expenseApi.debugSap(id);
+                    setDebugResult(res.data);
+                  } catch (err: any) {
+                    setDebugResult({ error: err.response?.data?.message || err.message });
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Bug className="h-4 w-4" />
+                Debug Gönder
+              </button>
+            </div>
+
+            {debugResult && (
+              <details open className="mt-2">
+                <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer">SAP Debug Yanıtı</summary>
+                <pre className="mt-1 text-xs font-mono bg-gray-900 text-green-300 rounded p-3 overflow-x-auto max-h-80 whitespace-pre-wrap">
+                  {JSON.stringify(debugResult, null, 2)}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6 shadow-sm space-y-5">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -254,17 +437,20 @@ export default function EditExpensePage() {
           )}
 
           {/* ─── SAP Posting Panel ─── */}
-          {(expenseData.sapStatus === 'OK' || expenseData.sapStatus === 'FAILED' || expenseData.sapStatus === 'PENDING') && (
+          {(expenseData.sapStatus === 'OK' || expenseData.sapStatus === 'FAILED' || expenseData.sapStatus === 'PENDING' || expenseData.sapStatus === 'FALLBACK') && (
             <div className={`rounded-lg border p-4 space-y-3 ${
               expenseData.sapStatus === 'OK'
                 ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20'
                 : expenseData.sapStatus === 'FAILED'
+                ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
+                : expenseData.sapStatus === 'FALLBACK'
                 ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
                 : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20'
             }`}>
               <div className="flex items-center gap-2">
                 {expenseData.sapStatus === 'OK' && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
                 {expenseData.sapStatus === 'FAILED' && <XCircle className="h-5 w-5 text-red-600" />}
+                {expenseData.sapStatus === 'FALLBACK' && <XCircle className="h-5 w-5 text-red-600" />}
                 {expenseData.sapStatus === 'PENDING' && <Clock className="h-5 w-5 text-amber-600" />}
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{t.sapPostingPanel}</h3>
               </div>
@@ -352,6 +538,27 @@ export default function EditExpensePage() {
                         {JSON.stringify(debugResult, null, 2)}
                       </pre>
                     </details>
+                  )}
+                </div>
+              )}
+
+              {expenseData.sapStatus === 'FALLBACK' && (
+                <div className="text-sm space-y-2">
+                  <p className="text-red-700 dark:text-red-300 font-medium">
+                    SAP belge numarası geçersiz (FALLBACK). Alanları düzeltip tekrar gönderin.
+                  </p>
+                  {expenseData.sapPostError && (
+                    <div>
+                      <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">{t.sapErrorDetails}:</p>
+                      <p className="text-xs font-mono bg-white/50 dark:bg-black/20 rounded p-2 break-all text-red-800 dark:text-red-200 whitespace-pre-wrap">
+                        {expenseData.sapPostError}
+                      </p>
+                    </div>
+                  )}
+                  {isElevated && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      "SAP Alanlarını Düzenle" butonunu kullanarak masraf merkezini/diğer alanları düzeltin ve tekrar gönderin.
+                    </p>
                   )}
                 </div>
               )}

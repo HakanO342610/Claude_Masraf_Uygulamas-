@@ -175,7 +175,7 @@ export default function ApprovalsPage() {
                   {approval.receiptUrl && (
                     <div className="mt-2">
                       <a
-                        href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/${approval.receiptUrl}`}
+                        href={`${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1').replace(/\/api\/v1$/, '')}/${approval.receiptUrl}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-100"

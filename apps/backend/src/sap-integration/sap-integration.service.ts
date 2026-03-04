@@ -16,7 +16,6 @@ import { ISapAdapter, SapExpensePayload } from './adapters/sap-adapter.interface
 @Injectable()
 export class SapIntegrationService implements OnModuleInit {
   private readonly logger = new Logger(SapIntegrationService.name);
-  private readonly MAX_RETRIES = 3;
   private readonly DEFAULT_TAX_RATE = 0.18;
   private adapter: ISapAdapter;
 
@@ -48,9 +47,22 @@ export class SapIntegrationService implements OnModuleInit {
     if (!expense) throw new NotFoundException('Expense not found');
 
     if (expense.status === ExpenseStatus.POSTED_TO_SAP) {
-      throw new ConflictException(
-        `Expense already posted to SAP: ${expense.sapDocumentNumber}`,
-      );
+      // FALLBACK (SAP-OK- prefix): gerçek FI belgesi yok — sıfırla ve yeniden gönder
+      if (expense.sapDocumentNumber?.startsWith('SAP-OK-')) {
+        this.logger.log(
+          `Expense ${expenseId} FALLBACK doc (${expense.sapDocumentNumber}) — resetting for re-post`,
+        );
+        await this.prisma.expense.update({
+          where: { id: expenseId },
+          data: { status: ExpenseStatus.FINANCE_APPROVED, sapDocumentNumber: null },
+        });
+        expense.status = ExpenseStatus.FINANCE_APPROVED;
+        expense.sapDocumentNumber = null;
+      } else {
+        throw new ConflictException(
+          `Expense already posted to SAP: ${expense.sapDocumentNumber}`,
+        );
+      }
     }
 
     // sapDocumentNumber zaten varsa (ama status güncellenmemişse) tekrar gönderme
@@ -58,7 +70,6 @@ export class SapIntegrationService implements OnModuleInit {
       this.logger.warn(
         `Expense ${expenseId} already has sapDocumentNumber=${expense.sapDocumentNumber}, fixing status...`,
       );
-      // Status'u düzelt ve hata fırlat
       await this.prisma.expense.update({
         where: { id: expenseId },
         data: { status: ExpenseStatus.POSTED_TO_SAP },
@@ -101,93 +112,65 @@ export class SapIntegrationService implements OnModuleInit {
       },
     };
 
-    let lastError: Error | null = null;
+    // Tek seferlik deneme — retry mantığı tamamen kuyrukta (SapQueueService, max 5 attempt).
+    // Bu fonksiyon başarısız olursa hemen throw eder; kuyruk exponential backoff ile yeniden dener.
+    this.logger.log(`SAP posting for expense ${expenseId}`);
 
-    for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
-      try {
-        // Tekrar denemeden önce DB'den expense'i kontrol et — arada başarılı olmuş olabilir
-        if (attempt > 1) {
-          const freshExpense = await this.prisma.expense.findUnique({ where: { id: expenseId } });
-          if (freshExpense?.status === ExpenseStatus.POSTED_TO_SAP || freshExpense?.sapDocumentNumber) {
-            this.logger.warn(`Expense ${expenseId} already posted (attempt ${attempt} cancelled)`);
-            return {
-              sapDocumentNumber: freshExpense.sapDocumentNumber || 'ALREADY_POSTED',
-              status: 'Already Posted',
-              sapType: this.adapterFactory.getSapType(),
-              expenseId,
-            };
-          }
-        }
+    try {
+      const result = await this.adapter.postExpense(payload);
 
-        this.logger.log(`SAP posting attempt ${attempt} for expense ${expenseId}`);
-
-        // Retry attempt bilgisini payload'a ekle — SAP tarafında tekrar log yazmasını engeller
-        (payload as any).retryAttempt = attempt;
-
-        const result = await this.adapter.postExpense(payload);
-
-        await this.prisma.expense.update({
-          where: { id: expenseId },
-          data: {
-            status: ExpenseStatus.POSTED_TO_SAP,
-            sapDocumentNumber: result.sapDocumentNumber,
-          },
-        });
-
-        await this.prisma.auditLog.create({
-          data: {
-            userId: expense.userId,
-            expenseId,
-            action: 'POSTED_TO_SAP',
-            details: [
-              `SAP Belge No: ${result.sapDocumentNumber}`,
-              result.fiscalYear ? `Mali Yıl: ${result.fiscalYear}` : null,
-              `SAP Türü: ${this.adapterFactory.getSapType()}`,
-              `Deneme: ${attempt}/${this.MAX_RETRIES}`,
-              `Tutar: ${expense.amount} ${expense.currency}`,
-              `Fiş No: ${(expense as any).receiptNumber || '-'}`,
-              `Çalışan: ${expense.user.name}`,
-            ].filter(Boolean).join(' | '),
-          },
-        });
-
-        return {
+      await this.prisma.expense.update({
+        where: { id: expenseId },
+        data: {
+          status: ExpenseStatus.POSTED_TO_SAP,
           sapDocumentNumber: result.sapDocumentNumber,
-          status: result.status,
-          sapType: this.adapterFactory.getSapType(),
+        },
+      });
+
+      await this.prisma.auditLog.create({
+        data: {
+          userId: expense.userId,
           expenseId,
-        };
-      } catch (error) {
-        lastError = error as Error;
-        this.logger.warn(
-          `SAP posting attempt ${attempt} failed: ${(error as Error).message}`,
-        );
-        if (attempt < this.MAX_RETRIES) {
-          await new Promise((r) => setTimeout(r, 1000 * attempt));
-        }
-      }
-    }
+          action: 'POSTED_TO_SAP',
+          details: [
+            `SAP Belge No: ${result.sapDocumentNumber}`,
+            result.fiscalYear ? `Mali Yıl: ${result.fiscalYear}` : null,
+            `SAP Türü: ${this.adapterFactory.getSapType()}`,
+            `Tutar: ${expense.amount} ${expense.currency}`,
+            `Fiş No: ${(expense as any).receiptNumber || '-'}`,
+            `Çalışan: ${expense.user.name}`,
+          ].filter(Boolean).join(' | '),
+        },
+      });
 
-    await this.prisma.auditLog.create({
-      data: {
-        userId: expense.userId,
+      return {
+        sapDocumentNumber: result.sapDocumentNumber,
+        status: result.status,
+        sapType: this.adapterFactory.getSapType(),
         expenseId,
-        action: 'SAP_POST_FAILED',
-        details: [
-          `${this.MAX_RETRIES} denemeden sonra başarısız`,
-          `Hata: ${lastError?.message || 'Bilinmeyen hata'}`,
-          `SAP Türü: ${this.adapterFactory.getSapType()}`,
-          `Tutar: ${expense.amount} ${expense.currency}`,
-          `Fiş No: ${(expense as any).receiptNumber || '-'}`,
-          `Çalışan: ${expense.user.name}`,
-          `Zaman: ${new Date().toISOString()}`,
-        ].join(' | '),
-      },
-    });
+      };
+    } catch (error) {
+      const errMsg = (error as Error).message;
+      this.logger.warn(`SAP posting failed for expense ${expenseId}: ${errMsg}`);
 
-    throw new BadRequestException(
-      `Failed to post to SAP after ${this.MAX_RETRIES} attempts: ${lastError?.message}`,
-    );
+      await this.prisma.auditLog.create({
+        data: {
+          userId: expense.userId,
+          expenseId,
+          action: 'SAP_POST_FAILED',
+          details: [
+            `Hata: ${errMsg}`,
+            `SAP Türü: ${this.adapterFactory.getSapType()}`,
+            `Tutar: ${expense.amount} ${expense.currency}`,
+            `Fiş No: ${(expense as any).receiptNumber || '-'}`,
+            `Çalışan: ${expense.user.name}`,
+            `Zaman: ${new Date().toISOString()}`,
+          ].join(' | '),
+        },
+      });
+
+      throw new BadRequestException(`SAP gönderimi başarısız: ${errMsg}`);
+    }
   }
 
   // ─── Debug: SAP raw response (DB'ye hiçbir şey yazmaz) ───────────────────

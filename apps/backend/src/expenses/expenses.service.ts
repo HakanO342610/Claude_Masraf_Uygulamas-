@@ -110,7 +110,8 @@ export class ExpensesService {
     return expenses.map((e) => {
       let sapStatus: string;
       if (e.status === ExpenseStatus.POSTED_TO_SAP) {
-        sapStatus = 'OK';
+        // SAP-OK- prefix: fallback doc number — SAP may not have a real FI document
+        sapStatus = e.sapDocumentNumber?.startsWith('SAP-OK-') ? 'FALLBACK' : 'OK';
       } else if (
         (e.status === ExpenseStatus.FINANCE_APPROVED ||
          e.status === ExpenseStatus.MANAGER_APPROVED) &&
@@ -154,7 +155,8 @@ export class ExpensesService {
     });
 
     let sapStatus: string;
-    if (expense.status === ExpenseStatus.POSTED_TO_SAP) sapStatus = 'OK';
+    if (expense.status === ExpenseStatus.POSTED_TO_SAP)
+      sapStatus = expense.sapDocumentNumber?.startsWith('SAP-OK-') ? 'FALLBACK' : 'OK';
     else if (sapFailLog) sapStatus = 'FAILED';
     else if (expense.status === ExpenseStatus.FINANCE_APPROVED) sapStatus = 'PENDING';
     else sapStatus = 'NOT_APPLICABLE';
@@ -199,7 +201,8 @@ export class ExpensesService {
     });
 
     let sapStatus: string;
-    if (expense.status === ExpenseStatus.POSTED_TO_SAP) sapStatus = 'OK';
+    if (expense.status === ExpenseStatus.POSTED_TO_SAP)
+      sapStatus = expense.sapDocumentNumber?.startsWith('SAP-OK-') ? 'FALLBACK' : 'OK';
     else if (sapFailLog) sapStatus = 'FAILED';
     else if (expense.status === ExpenseStatus.FINANCE_APPROVED) sapStatus = 'PENDING';
     else sapStatus = 'NOT_APPLICABLE';
@@ -230,6 +233,32 @@ export class ExpensesService {
       where: { id },
       data: updateData,
     });
+  }
+
+  // ─── Finance/Admin: SAP hatası olan masrafın alanlarını düzelt ──────────
+  async sapFixUpdate(id: string, approverId: string, dto: UpdateExpenseDto) {
+    const expense = await this.prisma.expense.findUnique({ where: { id } });
+    if (!expense) throw new NotFoundException('Expense not found');
+
+    const updateData: any = { ...dto };
+    delete updateData.receiptNumber;
+    if (updateData.expenseDate) {
+      updateData.expenseDate = new Date(updateData.expenseDate);
+    }
+
+    const updated = await this.prisma.expense.update({
+      where: { id },
+      data: updateData,
+    });
+
+    await this.createAuditLog(
+      approverId,
+      id,
+      'SAP_FIX_UPDATE',
+      `SAP fix: ${Object.keys(updateData).join(', ')} güncellendi`,
+    );
+
+    return updated;
   }
 
   async delete(id: string, userId: string) {
@@ -283,6 +312,23 @@ export class ExpensesService {
           approverId: user.managerId,
         },
       });
+    } else {
+      // Manager'ı yoksa (üst yönetici atanmamış) → Finance/Admin'e yönlendir
+      const fallbackApprover = await this.prisma.user.findFirst({
+        where: { role: { in: ['FINANCE', 'ADMIN'] }, isApproved: true },
+        orderBy: { role: 'asc' }, // ADMIN < FINANCE alfabetik → Finance önce gelir
+      });
+      if (fallbackApprover) {
+        await this.prisma.approval.create({
+          data: {
+            expenseId: id,
+            approverId: fallbackApprover.id,
+          },
+        });
+        this.logger.log(
+          `No manager found for user ${userId} — approval assigned to ${fallbackApprover.role} ${fallbackApprover.id}`,
+        );
+      }
     }
 
     await this.createAuditLog(userId, id, 'SUBMITTED', 'Expense submitted for approval');
@@ -291,19 +337,29 @@ export class ExpensesService {
   }
 
   async approve(id: string, approverId: string, comment?: string) {
-    const approval = await this.prisma.approval.findFirst({
-      where: { expenseId: id, approverId, status: 'PENDING' },
-    });
-    if (!approval) throw new NotFoundException('No pending approval found');
-
     const approver = await this.prisma.user.findUnique({
       where: { id: approverId },
     });
 
+    const isElevated = approver?.role === 'ADMIN' || approver?.role === 'FINANCE';
+
+    let approval = await this.prisma.approval.findFirst({
+      where: { expenseId: id, approverId, status: 'PENDING' },
+    });
+
+    // Admin/Finance: approval kaydı yoksa otomatik oluştur (takılı kalan masraflar için)
+    if (!approval && isElevated) {
+      approval = await this.prisma.approval.create({
+        data: { expenseId: id, approverId, status: 'PENDING' },
+      });
+    }
+
+    if (!approval) throw new NotFoundException('No pending approval found');
+
     let newStatus: ExpenseStatus;
     if (approver?.role === 'MANAGER') {
       newStatus = ExpenseStatus.MANAGER_APPROVED;
-    } else if (approver?.role === 'FINANCE') {
+    } else if (approver?.role === 'FINANCE' || approver?.role === 'ADMIN') {
       newStatus = ExpenseStatus.FINANCE_APPROVED;
     } else {
       newStatus = ExpenseStatus.MANAGER_APPROVED;
@@ -366,6 +422,11 @@ export class ExpensesService {
           'AUTO_FINANCE_APPROVED',
           'No Finance user found, auto-approved',
         );
+        // Auto-Finance-approve da SAP kuyruğuna ekle
+        this.logger.log(`Auto-Finance-approved — enqueueing expense ${id} for SAP posting`);
+        this.sapQueue.enqueue(id).catch((err) => {
+          this.logger.error(`Failed to enqueue auto-finance-approved expense ${id}: ${err.message}`);
+        });
       }
     }
 
@@ -417,7 +478,12 @@ export class ExpensesService {
   }
 
   async getPendingApprovals(approverId: string) {
-    return this.prisma.approval.findMany({
+    const approver = await this.prisma.user.findUnique({
+      where: { id: approverId },
+      select: { role: true },
+    });
+
+    const regularApprovals = await this.prisma.approval.findMany({
       where: { approverId, status: 'PENDING' },
       include: {
         expense: {
@@ -426,6 +492,40 @@ export class ExpensesService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Finance/Admin: approval kaydı olmadan takılı kalan SUBMITTED masrafları da göster
+    if (approver?.role === 'FINANCE' || approver?.role === 'ADMIN') {
+      const regularExpenseIds = regularApprovals.map((a) => a.expense.id);
+
+      const stuckExpenses = await this.prisma.expense.findMany({
+        where: {
+          status: { in: [ExpenseStatus.SUBMITTED, ExpenseStatus.MANAGER_APPROVED] },
+          id: { notIn: regularExpenseIds },
+          approvals: { none: { status: 'PENDING' } },
+        },
+        include: {
+          user: { select: { name: true, email: true, department: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Sahte approval nesnesi olarak döndür (id: 'virtual-{expenseId}')
+      const virtualApprovals = stuckExpenses.map((e) => ({
+        id: `virtual-${e.id}`,
+        expenseId: e.id,
+        approverId,
+        status: 'PENDING',
+        comment: null,
+        actionDate: null,
+        createdAt: e.createdAt,
+        updatedAt: e.updatedAt,
+        expense: e,
+      }));
+
+      return [...regularApprovals, ...virtualApprovals];
+    }
+
+    return regularApprovals;
   }
 
   private async createAuditLog(

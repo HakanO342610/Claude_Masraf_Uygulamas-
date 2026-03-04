@@ -32,7 +32,7 @@ const navigation: (NavItem & { key: import('@/lib/i18n').TranslationKey })[] = [
   { name: 'Approvals', key: 'approvals', href: '/dashboard/approvals', icon: CheckCircle, roles: ['MANAGER', 'FINANCE', 'ADMIN'] },
   { name: 'Reports', key: 'reports', href: '/dashboard/reports', icon: BarChart3, roles: ['MANAGER', 'FINANCE', 'ADMIN'] },
   { name: 'SAP Queue', key: 'sapQueue', href: '/dashboard/sap-queue', icon: Server, roles: ['FINANCE', 'ADMIN'] },
-  { name: 'Users', key: 'users', href: '/dashboard/admin', icon: Users, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Users', key: 'users', href: '/dashboard/admin', icon: Users, roles: ['ADMIN'] },
   { name: 'Audit Logs', key: 'auditLogs', href: '/dashboard/admin/audit-logs', icon: ScrollText, roles: ['ADMIN'] },
 ];
 
