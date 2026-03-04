@@ -19,7 +19,7 @@ export class OrganizationService {
   async findAll() {
     return this.prisma.organization.findMany({
       select: {
-        id: true, name: true, slug: true, plan: true,
+        id: true, name: true, slug: true, plan: true, setupModel: true,
         erpType: true, idpType: true,
         lastSyncAt: true, lastSyncStats: true,
         createdAt: true, updatedAt: true,
@@ -32,7 +32,7 @@ export class OrganizationService {
     const org = await this.prisma.organization.findUnique({
       where: { id },
       select: {
-        id: true, name: true, slug: true, plan: true,
+        id: true, name: true, slug: true, plan: true, setupModel: true,
         erpType: true, idpType: true,
         lastSyncAt: true, lastSyncStats: true,
         createdAt: true, updatedAt: true,
@@ -57,7 +57,7 @@ export class OrganizationService {
     });
   }
 
-  async update(id: string, data: OrgConfigDto & { name?: string; plan?: string }) {
+  async update(id: string, data: OrgConfigDto & { name?: string; plan?: string; setupModel?: string }) {
     const org = await this.prisma.organization.findUnique({ where: { id } });
     if (!org) throw new NotFoundException('Organization not found');
 
@@ -66,6 +66,7 @@ export class OrganizationService {
     if (data.plan  !== undefined) updateData.plan    = data.plan;
     if (data.erpType !== undefined) updateData.erpType = data.erpType;
     if (data.idpType !== undefined) updateData.idpType = data.idpType;
+    if (data.setupModel !== undefined) updateData.setupModel = data.setupModel;
 
     if (data.erpConfig !== undefined) {
       updateData.erpConfig = data.erpConfig ? this.crypto.encryptJson(data.erpConfig) : null;

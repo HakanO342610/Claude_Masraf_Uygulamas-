@@ -1,6 +1,6 @@
 # 📋 Project Memory — Expense Management App
 
-> **Son Güncelleme:** 2026-03-04 (Oturum #8)
+> **Son Güncelleme:** 2026-03-04 (Oturum #9)
 > **Proje:** Claude_Proj1 — Kurumsal Masraf Yönetimi & SAP Entegrasyon Platformu
 
 ---
@@ -192,6 +192,94 @@
 - [ ] App Store / Google Play yayınlama → flutter_launcher_icons + flutter_native_splash config hazır, PNG assetler placeholder
 - [ ] Monitoring & alerting setup
 
+### FAZ 11 — Kullanıcı & Organizasyon Yönetimi (3 Kurulum Modeli) 🟡 DEVAM EDİYOR (2026-03-04, Oturum #9)
+
+> **Amaç:** Ürün kurulumunda 3 farklı model seçimi — organizasyon şeması, departman/pozisyon hiyerarşisi, çalışan-yönetici-üst yönetici ilişkileri
+
+**3 Kurulum Modeli:**
+- **Model A — Standalone:** Kullanıcılar ürün içinde manuel yönetilir (mevcut yapı + departman/pozisyon CRUD)
+- **Model B — SAP HR Entegrasyonu:** ECC HCM (ZMASRAFF_S_USER), S4 HANA On-Prem (OData V4), S4 Cloud/Rise (SuccessFactors OData)
+- **Model C — Directory / External:** LDAP/Active Directory, Azure AD (Microsoft Graph), External DB/API
+
+**Tamamlanan Alt Fazlar:**
+
+- [x] **11.1 — DB Migration:** Prisma schema → Department (self-ref tree), Position (self-ref tree), User + departmentId/positionId/jobTitle/upperManagerId, Organization + setupModel
+  - Migration: `20260304120000_add_department_position_org_structure` (SQL hazır, DB offline iken oluşturuldu)
+- [x] **11.2 — Interface V2:** IOrgUnit, IPosition interfaceleri, IIdentityEmployee genişletildi (departmentCode, positionCode, upperManagerExternalId), IIdentityAdapter'a syncOrgUnits?/syncPositions? opsiyonel metotlar eklendi
+- [x] **11.3 — S4 On-Prem Adapter:** `sap-s4-onprem.adapter.ts` — OData V2/V4 (API_BUSINESS_PARTNER, YY1_ORGSTRUCTURE)
+- [x] **11.4 — S4 Cloud Adapter:** `sap-s4-cloud.adapter.ts` — OAuth2, SuccessFactors OData (/odata/v2/User, FODepartment, Position)
+- [x] **11.5 — LDAP Adapter:** `ldap.adapter.ts` — Dynamic require('ldapjs'), sAMAccountName, OU sync, DN-based parent parsing
+- [x] **11.6 — External DB Adapter:** `external-db.adapter.ts` — REST/DB dual mode, flexible field mapping, dynamic require('pg')
+- [x] **11.7 — UserSyncService V2:** Dept/position sync, 3-pass department upsert (parent + manager), 2-pass position upsert, applySync pass 2 upperManager logic
+- [x] **11.8 — Factory + Enums:** SetupModel/SapSystemType/DirectoryType enums (packages/shared), IdentityAdapterFactory 7 adapter tipi
+- [x] **11.9 — Setup Wizard:** Backend (setup-wizard.controller.ts: status/test-connection/complete/preview) + Web UI (4-adımlı sihirbaz: Model Seçimi → Org Bilgileri → Bağlantı Config → Önizleme)
+- [x] **11.10 — Org Chart Page:** `/dashboard/admin/org-chart` — departman ağacı görünümü, detay paneli, CRUD, genişlet/daralt
+- [x] **11.11 — Pozisyon Yönetimi:** `/dashboard/admin/positions` — tablo görünümü, departman filtresi, arama, modal form (CRUD)
+- [x] **11.12 — Admin Sidebar Navigasyonu:** Sidebar.tsx'e Org Şeması, Pozisyonlar, Kurulum Sihirbazı linkleri + i18n (TR/EN) çevirileri
+
+**Tamamlanan Alt Fazlar (Oturum #10):**
+
+- [x] **11.13 — DB Migration:** Hazır — Docker/PostgreSQL aktifken: `docker compose up -d postgres && cd apps/backend && npx prisma migrate deploy`
+- [x] **11.15 — ABAP ZCL_EXPENSE_USER_LIST V2:** Tam ABAP kod şablonu hazır → `memory/ABAP_ZCL_EXPENSE_USER_LIST_V2.md`
+  - ZMASRAFF_S_USER: + DEPARTMENT_CODE, POSITION_CODE, UPPER_MANAGER_EMAIL
+  - ZMASRAFF_S_ORGUNIT (yeni): ORGEH, ORGTX, PARENT_ORGEH, MANAGER_EMAIL, LEVEL
+  - ZMASRAFF_S_POSITION (yeni): PLANS, PLSTX, ORGEH, UP_PLANS, LEVEL
+  - Response: `{ PERSONS, ORG_UNITS, POSITIONS }` — Node.js SapHcmAdapter ile tam uyumlu
+- [x] **11.16 — Unit Testler:**
+  - `department.service.spec.ts` — findTree, findOne, create (auto-level), update, delete (child/user guard)
+  - `position.service.spec.ts` — findAll (filter), findOne, create, update, delete
+  - `identity-adapter.factory.spec.ts` — 7 adapter tipi, env fallback, decryption hata yönetimi
+- [x] **11.18 — Mobile Org Chart:**
+  - `org_chart_screen.dart` — TreeView (expand/collapse), renk seviyeleri, yönetici/kullanıcı sayısı
+  - `positions_screen.dart` — search + departman filtresi, üst pozisyon gösterimi
+  - `api_service.dart` → getDepartmentTree, getDepartments, getPositions ekle
+  - `main.dart` → `/org-chart`, `/positions` route'ları ekle
+  - `dashboard_screen.dart` → Admin için 2 yeni NavigationDestination + route
+- [x] **11.19 — Seed Data:** Org + 6 departman (GM→BT,FIN,SAT→BT-SW,BT-INF) + 7 pozisyon + kullanıcı-departman-pozisyon-upperManager bağlantıları
+- [x] **SapHcmAdapter:** UPPER_MANAGER_EMAIL alanı eklendi (r.UPPER_MANAGER_EMAIL mapping)
+
+**Bekleyen Alt Fazlar:**
+
+- [ ] **11.13 — DB Migration Uygulama (ÖNCELİK):** Docker aktifken çalıştır:
+  ```bash
+  docker compose up -d postgres
+  cd apps/backend && npx prisma migrate deploy
+  # veya: npx prisma db push
+  ```
+
+- [ ] **11.14 — Backend Entegrasyon Testi:**
+  - Swagger: `GET /departments/tree`, `POST /departments`, `GET /setup/status`
+
+- [ ] **11.17 — E2E Testler (Web):**
+  - `e2e/org-chart.spec.ts`, `e2e/positions.spec.ts`, `e2e/setup-wizard.spec.ts`
+
+- [ ] **11.20 — Git Commit & Push:**
+  ```bash
+  git add . && git commit -m "feat(faz11): 3-model kurulum — ABAP V2, dept/pos hiyerarşisi, mobile org chart, unit testler"
+  git push origin main
+  ```
+
+**Yeni Env Değişkenleri (Model B/C için):**
+- `SETUP_MODEL`: `STANDALONE` | `SAP_HR` | `DIRECTORY`
+- S4 On-Prem: `SAP_S4_BASE_URL`, `SAP_S4_USERNAME`, `SAP_S4_PASSWORD`
+- S4 Cloud: `SAP_SF_BASE_URL`, `SAP_SF_TOKEN_URL`, `SAP_SF_CLIENT_ID`, `SAP_SF_CLIENT_SECRET`, `SAP_SF_COMPANY_ID`
+- LDAP: `LDAP_URL`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD`, `LDAP_SEARCH_BASE`, `LDAP_USER_FILTER`
+- External DB: `EXT_DB_HOST`, `EXT_DB_PORT`, `EXT_DB_NAME`, `EXT_DB_USER`, `EXT_DB_PASSWORD`, `EXT_DB_SCHEMA`
+
+**Yeni Dosyalar (FAZ 11):**
+- `apps/backend/src/identity/adapters/sap-s4-onprem.adapter.ts`
+- `apps/backend/src/identity/adapters/sap-s4-cloud.adapter.ts`
+- `apps/backend/src/identity/adapters/ldap.adapter.ts`
+- `apps/backend/src/identity/adapters/external-db.adapter.ts`
+- `apps/backend/src/organization/department.service.ts`
+- `apps/backend/src/organization/department.controller.ts`
+- `apps/backend/src/organization/position.service.ts`
+- `apps/backend/src/organization/position.controller.ts`
+- `apps/backend/src/organization/setup-wizard.controller.ts`
+- `apps/web/src/app/dashboard/admin/setup/page.tsx`
+- `apps/web/src/app/dashboard/admin/org-chart/page.tsx`
+- `apps/web/src/app/dashboard/admin/positions/page.tsx`
+
 ---
 
 ## 🏗️ Proje Genel Durumu
@@ -203,6 +291,9 @@
 | Mobile App (Flutter)       | ✅ Çalışıyor            | iOS Simulator (iPhone 17 Pro)   |
 | Database (PostgreSQL)      | ✅ Çalışıyor            | Docker üzerinden                |
 | SAP Entegrasyon            | ✅ Aktif (Kuyruk Tabanlı) | REST adapter + Queue + Retry + KDV analizi tamamlandı |
+| Identity / HR Sync         | ✅ 7 Adapter            | SAP HCM, S4 OnPrem, S4 Cloud, LDAP, Azure AD, External DB, Null |
+| Org Yapısı                 | ✅ Dept/Position Tree   | Standalone CRUD + SAP/Directory sync |
+| Setup Wizard               | ✅ 4-Adım Sihirbaz     | Model seçimi → Bağlantı → Önizleme → Tamamla |
 | Email Servisi (Gmail SMTP) | ✅ Çalışıyor            | Nodemailer + Gmail App Password |
 | Docker Compose             | ✅ Çalışıyor            | postgres + backend + web        |
 | K8s Config                 | ✅ Mevcut               | k8s/ dizininde yaml dosyaları   |
@@ -224,9 +315,11 @@ Claude_Proj1/
 │   │   │   ├── reports/         # Summary, by-dept, by-category, monthly, CSV
 │   │   │   ├── mail/            # MailService (Nodemailer Gmail SMTP)
 │   │   │   ├── sap-integration/ # SAP REST posting, queue, master-data
+│   │   │   ├── identity/        # Identity adapters (7 adet), UserSyncService
+│   │   │   ├── organization/    # Organization CRUD, Department, Position, Setup Wizard
 │   │   │   ├── notifications/   # Cron-based notifications
 │   │   │   ├── health/          # Health check endpoint
-│   │   │   ├── common/          # Guards, Decorators
+│   │   │   ├── common/          # Guards, Decorators, CryptoService
 │   │   │   └── prisma/          # PrismaService
 │   │   └── prisma/schema.prisma # DB şeması
 │   ├── mobile/expense_mobile/   # Flutter iOS App
@@ -251,7 +344,7 @@ Claude_Proj1/
 
 ## 🔑 Veritabanı Modeli (Prisma)
 
-**Ana Tablolar:** Organization, User, Expense, Approval, Receipt, AuditLog, RefreshToken, SapPostingQueue, SapMasterData, PolicyRule
+**Ana Tablolar:** Organization, User, Expense, Approval, Receipt, AuditLog, RefreshToken, SapPostingQueue, SapMasterData, PolicyRule, Department, Position
 
 **User Model Alanları:**
 
@@ -404,6 +497,9 @@ APP_BASE_URL=http://localhost:3001
 4. **Kamera (Receipt)** — iOS simülatörde kamera sınırlı, galeri üzerinden test yapılmalı.
 5. **Backend test dosyası** — `expenses.service.spec.ts` CreateExpenseDto'da receiptNumber eksik (1 test tip hatası). Runtime'ı etkilemez.
 6. **SAP Kuyruk Cron** — Her 1 dakikada çalışır. Backend başlatıldığında otomatik aktif (@nestjs/schedule). DEAD_LETTER öğeler manuel retry gerektirir.
+7. **FAZ 11 DB Migration Bekliyor** — `20260304120000_add_department_position_org_structure` migration'ı henüz DB'ye uygulanmadı. Docker/PostgreSQL aktifken `npx prisma migrate deploy` veya `npx prisma db push` çalıştırılmalı. Migration SQL dosyası hazır.
+8. **LDAP / External DB Paketleri** — `ldapjs` ve `pg` paketleri dynamic require ile yükleniyor. Bu adapter'lar kullanılacaksa `npm install ldapjs pg` gerekli. Standalone/SAP modunda gerekmez.
+9. **Setup Wizard Bağlantı Testi** — `POST /setup/test-connection` endpoint'i adapter'ın `testConnection()` metodunu çağırır. SAP/LDAP hedef sistemleri erişilebilir olmalı.
 
 ---
 

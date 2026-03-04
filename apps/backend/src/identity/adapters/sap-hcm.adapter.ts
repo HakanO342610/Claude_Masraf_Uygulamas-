@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import axios from 'axios';
-import { IIdentityAdapter, IIdentityEmployee } from './identity-adapter.interface';
+import { IIdentityAdapter, IIdentityEmployee, IOrgUnit, IPosition } from './identity-adapter.interface';
 
 /**
  * SAP HCM Adapter — MYDMG_GET_USER_LIST metodunu HTTP POST ile çağırır.
@@ -74,14 +74,19 @@ export class SapHcmAdapter implements IIdentityAdapter {
         const managerEmail  = String(r.MANAGEREMAIL || '').trim().toLowerCase() || undefined;
         const isActive      = String(r.ISACTIVE || '').toUpperCase() === 'X';
 
+        const upperManagerEmail = String(r.UPPER_MANAGER_EMAIL || '').trim().toLowerCase() || undefined;
+
         return {
-          externalId:    personnelCode,
-          sapEmployeeId: personnelCode,
-          name:          [firstName, lastName].filter(Boolean).join(' ') || personnelCode,
+          externalId:         personnelCode,
+          sapEmployeeId:      personnelCode,
+          name:               [firstName, lastName].filter(Boolean).join(' ') || personnelCode,
           email,
-          department:    r.DEPARTMENT ? String(r.DEPARTMENT).trim() : undefined,
-          jobTitle:      r.TITLE      ? String(r.TITLE).trim()      : undefined,
+          department:         r.DEPARTMENT ? String(r.DEPARTMENT).trim() : undefined,
+          departmentCode:     r.DEPARTMENT_CODE || r.ORGEH || undefined,
+          jobTitle:           r.TITLE ? String(r.TITLE).trim() : undefined,
+          positionCode:       r.PLANS || r.POSITION_CODE || undefined,
           managerEmail,
+          upperManagerEmail,
           isActive,
         };
       })
@@ -89,15 +94,97 @@ export class SapHcmAdapter implements IIdentityAdapter {
   }
 
   async testConnection() {
+    // user_list endpoint'ine POST atarak bağlantıyı doğrula
+    // 200 → bağlı, 401/403 → SAP erişilebilir ama yetki sorunu, diğer → hata
+    const url = `${this.baseUrl}${this.userListPath}`;
     try {
-      const url = `${this.baseUrl}/sap/bc/masraffco/test-connection`;
-      await axios.get(url, {
+      const res = await axios.post(url, null, {
         auth: { username: this.username, password: this.password },
+        headers: { Accept: 'application/json' },
         timeout: 10_000,
+        validateStatus: () => true, // tüm HTTP kodlarını başarı say, biz handle ederiz
       });
-      return { connected: true, systemInfo: `SAP HCM @ ${this.baseUrl}` };
+      if (res.status === 200) {
+        const count = Array.isArray(res.data?.PERSONS) ? res.data.PERSONS.length : '?';
+        return { connected: true, systemInfo: `SAP HCM @ ${this.baseUrl} — ${count} kayıt` };
+      }
+      if (res.status === 401 || res.status === 403) {
+        return { connected: false, error: `SAP erişilebilir ama yetkilendirme hatası (HTTP ${res.status})` };
+      }
+      return { connected: false, error: `HTTP ${res.status} — endpoint bulunamadı (SICF aktif mi?)` };
     } catch (err: any) {
       return { connected: false, error: err.message };
+    }
+  }
+
+  // ─── Organizasyon Birimleri (SAP HCM: OM modülü) ─────────────────────
+  async syncOrgUnits(): Promise<IOrgUnit[]> {
+    const url = `${this.baseUrl}${this.userListPath}`;
+    this.logger.log(`SAP HCM org unit sync: POST ${url}`);
+
+    try {
+      const response = await axios.post(url, null, {
+        auth: { username: this.username, password: this.password },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        timeout: 30_000,
+      });
+
+      const raw: any[] = Array.isArray(response.data?.ORG_UNITS)
+        ? response.data.ORG_UNITS
+        : [];
+
+      this.logger.log(`SAP HCM returned ${raw.length} org unit records`);
+
+      return raw.map((ou): IOrgUnit => ({
+        externalId:       String(ou.ORGEH || '').trim(),
+        name:             String(ou.NAME || ou.ORGTX || '').trim(),
+        code:             String(ou.ORGEH || '').trim(),
+        parentExternalId: ou.PARENT_ORGEH || ou.UP_ORGEH || undefined,
+        managerExternalId: ou.MANAGER_PNR || undefined,
+        managerEmail:     ou.MANAGER_EMAIL || undefined,
+        level:            typeof ou.LEVEL === 'number' ? ou.LEVEL : undefined,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`SAP HCM org unit sync failed: ${err.message}`);
+      return [];
+    }
+  }
+
+  // ─── Pozisyonlar (SAP HCM: OM modülü) ────────────────────────────────
+  async syncPositions(): Promise<IPosition[]> {
+    const url = `${this.baseUrl}${this.userListPath}`;
+    this.logger.log(`SAP HCM position sync: POST ${url}`);
+
+    try {
+      const response = await axios.post(url, null, {
+        auth: { username: this.username, password: this.password },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        timeout: 30_000,
+      });
+
+      const raw: any[] = Array.isArray(response.data?.POSITIONS)
+        ? response.data.POSITIONS
+        : [];
+
+      this.logger.log(`SAP HCM returned ${raw.length} position records`);
+
+      return raw.map((pos): IPosition => ({
+        externalId:                String(pos.PLANS || '').trim(),
+        title:                     String(pos.TITLE || pos.PLSTX || '').trim(),
+        code:                      String(pos.PLANS || '').trim(),
+        orgUnitExternalId:         pos.ORGEH || undefined,
+        parentPositionExternalId:  pos.PARENT_PLANS || pos.UP_PLANS || undefined,
+        level:                     typeof pos.LEVEL === 'number' ? pos.LEVEL : undefined,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`SAP HCM position sync failed: ${err.message}`);
+      return [];
     }
   }
 }

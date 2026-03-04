@@ -14,6 +14,9 @@ import {
   LogOut,
   X,
   ScrollText,
+  Network,
+  Briefcase,
+  Wand2,
 } from 'lucide-react';
 import { useAuthStore, useI18nStore } from '@/lib/store';
 import { authApi } from '@/lib/api';
@@ -34,6 +37,9 @@ const navigation: (NavItem & { key: import('@/lib/i18n').TranslationKey })[] = [
   { name: 'SAP Queue', key: 'sapQueue', href: '/dashboard/sap-queue', icon: Server, roles: ['FINANCE', 'ADMIN'] },
   { name: 'Users', key: 'users', href: '/dashboard/admin', icon: Users, roles: ['ADMIN'] },
   { name: 'Audit Logs', key: 'auditLogs', href: '/dashboard/admin/audit-logs', icon: ScrollText, roles: ['ADMIN'] },
+  { name: 'Org Chart', key: 'orgChart', href: '/dashboard/admin/org-chart', icon: Network, roles: ['ADMIN'] },
+  { name: 'Positions', key: 'positions', href: '/dashboard/admin/positions', icon: Briefcase, roles: ['ADMIN'] },
+  { name: 'Setup Wizard', key: 'setupWizard', href: '/dashboard/admin/setup', icon: Wand2, roles: ['ADMIN'] },
 ];
 
 interface SidebarProps {

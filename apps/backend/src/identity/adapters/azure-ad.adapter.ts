@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import axios from 'axios';
-import { IIdentityAdapter, IIdentityEmployee } from './identity-adapter.interface';
+import { IIdentityAdapter, IIdentityEmployee, IOrgUnit } from './identity-adapter.interface';
 
 export class AzureAdAdapter implements IIdentityAdapter {
   private readonly logger = new Logger(AzureAdAdapter.name);
@@ -58,5 +58,41 @@ export class AzureAdAdapter implements IIdentityAdapter {
     } catch (err: any) {
       return { connected: false, error: err.message };
     }
+  }
+
+  // ─── Azure AD Gruplar/Departmanlar ───────────────────────────────────
+  async syncOrgUnits(): Promise<IOrgUnit[]> {
+    const token = await this.getToken();
+    const orgUnits: IOrgUnit[] = [];
+
+    // Azure AD'de departmanlar user.department olarak gelir (flat)
+    // Burada unique departmanları çıkarıp org unit olarak döneriz
+    const deptSet = new Map<string, { name: string; count: number }>();
+    let url = 'https://graph.microsoft.com/v1.0/users?$select=department&$top=999';
+
+    while (url) {
+      const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+      for (const u of res.data.value ?? []) {
+        if (u.department) {
+          const existing = deptSet.get(u.department);
+          if (existing) {
+            existing.count++;
+          } else {
+            deptSet.set(u.department, { name: u.department, count: 1 });
+          }
+        }
+      }
+      url = res.data['@odata.nextLink'] || null;
+    }
+
+    for (const [dept, info] of deptSet) {
+      orgUnits.push({
+        externalId: dept,
+        name: dept,
+        code: dept,
+      });
+    }
+
+    return orgUnits;
   }
 }

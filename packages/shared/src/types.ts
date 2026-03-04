@@ -1,4 +1,4 @@
-import { UserRole, ExpenseStatus, ApprovalStatus } from './enums';
+import { UserRole, ExpenseStatus, ApprovalStatus, SetupModel, SapSystemType, DirectoryType } from './enums';
 
 export interface UserBase {
   id: string;
@@ -8,6 +8,13 @@ export interface UserBase {
   role: UserRole;
   sapEmployeeId?: string;
   managerId?: string;
+  upperManagerId?: string;
+  departmentId?: string;
+  positionId?: string;
+  jobTitle?: string;
+  isActive?: boolean;
+  externalId?: string;
+  externalSource?: string;
 }
 
 export interface ExpenseBase {
@@ -126,4 +133,52 @@ export interface PaginatedResponse<T> {
   total: number;
   page: number;
   limit: number;
+}
+
+// ─── Organization & Org Structure ─────────────────────────────────────
+
+export interface OrganizationBase {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  setupModel: SetupModel;
+  erpType: string;
+  idpType: string;
+  lastSyncAt?: string;
+  lastSyncStats?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DepartmentBase {
+  id: string;
+  name: string;
+  code: string;
+  externalId?: string;
+  parentId?: string;
+  managerId?: string;
+  organizationId?: string;
+  level: number;
+  isActive: boolean;
+  children?: DepartmentBase[];
+}
+
+export interface PositionBase {
+  id: string;
+  title: string;
+  code: string;
+  externalId?: string;
+  departmentId?: string;
+  parentPositionId?: string;
+  organizationId?: string;
+  level: number;
+  isActive: boolean;
+}
+
+export interface SetupWizardConfig {
+  setupModel: SetupModel;
+  sapSystemType?: SapSystemType;
+  directoryType?: DirectoryType;
+  connectionConfig: Record<string, any>;
 }

@@ -94,8 +94,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final authService = context.read<AuthService>();
     if (authService.user?.isAdmin == true) {
       routes.add('/users');
+      routes.add('/org-chart');
+      routes.add('/positions');
     }
-    
+
     if (index < routes.length) {
       await Navigator.of(context).pushNamed(routes[index]);
       // Reload data when returning from any screen
@@ -270,6 +272,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: const Icon(Icons.people_outline),
               selectedIcon: const Icon(Icons.people),
               label: l10n?.users ?? 'Users',
+            ),
+          if (user?.isAdmin == true)
+            const NavigationDestination(
+              icon: Icon(Icons.account_tree_outlined),
+              selectedIcon: Icon(Icons.account_tree),
+              label: 'Org Şema',
+            ),
+          if (user?.isAdmin == true)
+            const NavigationDestination(
+              icon: Icon(Icons.work_outline),
+              selectedIcon: Icon(Icons.work),
+              label: 'Pozisyon',
             ),
         ],
       ),

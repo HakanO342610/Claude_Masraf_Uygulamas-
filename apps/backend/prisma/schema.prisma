@@ -22,9 +22,11 @@ model Organization {
   lastSyncAt    DateTime? @map("last_sync_at")
   lastSyncStats Json?     @map("last_sync_stats")
 
-  users     User[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  users       User[]
+  departments Department[]
+  setupModel  String   @default("STANDALONE") @map("setup_model")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("organizations")
 }
@@ -52,6 +54,16 @@ model User {
   // Multi-tenant
   organizationId    String?       @map("organization_id")
   organization      Organization? @relation(fields: [organizationId], references: [id])
+  // Organization structure
+  departmentId        String?       @map("department_id")
+  departmentRel       Department?   @relation("UserDepartment", fields: [departmentId], references: [id])
+  positionId          String?       @map("position_id")
+  positionRel         Position?     @relation("UserPosition", fields: [positionId], references: [id])
+  jobTitle            String?       @map("job_title")
+  upperManagerId      String?       @map("upper_manager_id")
+  upperManager        User?         @relation("UpperManager", fields: [upperManagerId], references: [id])
+  upperSubordinates   User[]        @relation("UpperManager")
+  managedDepartments  Department[]  @relation("DeptManager")
 
   approvals         Approval[]
   auditLogs         AuditLog[]
@@ -63,6 +75,8 @@ model User {
 
   @@index([organizationId])
   @@index([externalId, externalSource])
+  @@index([departmentId])
+  @@index([positionId])
   @@map("users")
 }
 
@@ -186,6 +200,53 @@ model AuditLog {
   user      User     @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
+}
+
+model Department {
+  id              String        @id @default(uuid())
+  name            String
+  code            String
+  externalId      String?       @map("external_id")
+  parentId        String?       @map("parent_id")
+  parent          Department?   @relation("DeptTree", fields: [parentId], references: [id])
+  children        Department[]  @relation("DeptTree")
+  managerId       String?       @map("manager_id")
+  manager         User?         @relation("DeptManager", fields: [managerId], references: [id])
+  organizationId  String?       @map("organization_id")
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  level           Int           @default(0)
+  isActive        Boolean       @default(true) @map("is_active")
+  positions       Position[]
+  users           User[]        @relation("UserDepartment")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@unique([code, organizationId])
+  @@index([parentId])
+  @@map("departments")
+}
+
+model Position {
+  id                  String        @id @default(uuid())
+  title               String
+  code                String
+  externalId          String?       @map("external_id")
+  departmentId        String?       @map("department_id")
+  department          Department?   @relation(fields: [departmentId], references: [id])
+  parentPositionId    String?       @map("parent_position_id")
+  parentPosition      Position?     @relation("PosTree", fields: [parentPositionId], references: [id])
+  childPositions      Position[]    @relation("PosTree")
+  level               Int           @default(0)
+  organizationId      String?       @map("organization_id")
+  isActive            Boolean       @default(true) @map("is_active")
+  users               User[]        @relation("UserPosition")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  @@unique([code, organizationId])
+  @@index([departmentId])
+  @@index([parentPositionId])
+  @@map("positions")
 }
 
 enum UserRole {

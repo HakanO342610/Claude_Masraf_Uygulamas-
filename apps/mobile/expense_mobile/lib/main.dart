@@ -20,6 +20,8 @@ import 'screens/approval_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/receipts_screen.dart';
 import 'screens/users_screen.dart';
+import 'screens/org_chart_screen.dart';
+import 'screens/positions_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -91,6 +93,8 @@ class ExpenseApp extends StatelessWidget {
               '/reports': (_) => const ReportsScreen(),
               '/receipts': (_) => const ReceiptsScreen(),
               '/users': (_) => const UsersScreen(),
+              '/org-chart': (_) => const OrgChartScreen(),
+              '/positions': (_) => const PositionsScreen(),
             },
           );
         },

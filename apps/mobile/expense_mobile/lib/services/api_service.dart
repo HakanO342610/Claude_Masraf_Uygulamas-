@@ -609,4 +609,26 @@ class ApiService {
   Future<void> updateFcmToken(String fcmToken) async {
     await _patch('/users/me/fcm-token', {'fcmToken': fcmToken});
   }
+
+  // ─── Department & Position API ─────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getDepartmentTree() async {
+    final data = await _get('/departments/tree');
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> getDepartments() async {
+    final data = await _get('/departments');
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> getPositions({String? departmentId}) async {
+    String path = '/positions';
+    if (departmentId != null) path += '?departmentId=$departmentId';
+    final data = await _get(path);
+    if (data is List) return data.cast<Map<String, dynamic>>();
+    return [];
+  }
 }

@@ -35,6 +35,9 @@ const translations = {
     sapQueue: 'SAP Kuyruğu',
     users: 'Kullanıcılar',
     auditLogs: 'Denetim Günlüğü',
+    orgChart: 'Org Şeması',
+    positions: 'Pozisyonlar',
+    setupWizard: 'Kurulum Sihirbazı',
     // Dashboard
     totalExpenses: 'Toplam Masraf',
     pendingApprovals: 'Bekleyen Onaylar',
@@ -280,6 +283,9 @@ const translations = {
     sapQueue: 'SAP Queue',
     users: 'Users',
     auditLogs: 'Audit Logs',
+    orgChart: 'Org Chart',
+    positions: 'Positions',
+    setupWizard: 'Setup Wizard',
     // Dashboard
     totalExpenses: 'Total Expenses',
     pendingApprovals: 'Pending Approvals',

@@ -75,6 +75,104 @@ async function main() {
 
   console.log('Users created:', { admin: admin.id, finance: finance.id, manager: manager.id, employee: employee.id });
 
+  // ─── Organization ─────────────────────────────────────────────────────
+  const org = await prisma.organization.upsert({
+    where: { slug: 'demo-company' },
+    update: {},
+    create: {
+      name: 'Demo Şirketi A.Ş.',
+      slug: 'demo-company',
+      plan: 'ENTERPRISE',
+      erpType: 'NONE',
+      idpType: 'NONE',
+      setupModel: 'STANDALONE',
+    },
+  });
+
+  // ─── Departments (3-level hierarchy) ─────────────────────────────────
+  const deptRoot = await prisma.department.upsert({
+    where: { code_organizationId: { code: 'GM', organizationId: org.id } },
+    update: {},
+    create: { name: 'Genel Müdürlük', code: 'GM', level: 0, organizationId: org.id, managerId: admin.id },
+  });
+  const deptIT = await prisma.department.upsert({
+    where: { code_organizationId: { code: 'BT', organizationId: org.id } },
+    update: {},
+    create: { name: 'Bilgi Teknolojileri', code: 'BT', level: 1, parentId: deptRoot.id, organizationId: org.id, managerId: manager.id },
+  });
+  const deptFinance = await prisma.department.upsert({
+    where: { code_organizationId: { code: 'FIN', organizationId: org.id } },
+    update: {},
+    create: { name: 'Finans', code: 'FIN', level: 1, parentId: deptRoot.id, organizationId: org.id, managerId: finance.id },
+  });
+  const deptSales = await prisma.department.upsert({
+    where: { code_organizationId: { code: 'SAT', organizationId: org.id } },
+    update: {},
+    create: { name: 'Satış', code: 'SAT', level: 1, parentId: deptRoot.id, organizationId: org.id },
+  });
+  const deptSW = await prisma.department.upsert({
+    where: { code_organizationId: { code: 'BT-SW', organizationId: org.id } },
+    update: {},
+    create: { name: 'Yazılım Geliştirme', code: 'BT-SW', level: 2, parentId: deptIT.id, organizationId: org.id, managerId: manager.id },
+  });
+  await prisma.department.upsert({
+    where: { code_organizationId: { code: 'BT-INF', organizationId: org.id } },
+    update: {},
+    create: { name: 'Altyapı & Operasyon', code: 'BT-INF', level: 2, parentId: deptIT.id, organizationId: org.id },
+  });
+  console.log('Departments created: GM → BT, FIN, SAT → BT-SW, BT-INF');
+
+  // ─── Positions ────────────────────────────────────────────────────────
+  const posGM = await prisma.position.upsert({
+    where: { code_organizationId: { code: 'POS-GM', organizationId: org.id } },
+    update: {},
+    create: { title: 'Genel Müdür', code: 'POS-GM', level: 0, departmentId: deptRoot.id, organizationId: org.id },
+  });
+  const posITDir = await prisma.position.upsert({
+    where: { code_organizationId: { code: 'POS-IT-DIR', organizationId: org.id } },
+    update: {},
+    create: { title: 'IT Direktörü', code: 'POS-IT-DIR', level: 1, departmentId: deptIT.id, parentPositionId: posGM.id, organizationId: org.id },
+  });
+  const posSWMgr = await prisma.position.upsert({
+    where: { code_organizationId: { code: 'POS-SW-MGR', organizationId: org.id } },
+    update: {},
+    create: { title: 'Yazılım Müdürü', code: 'POS-SW-MGR', level: 2, departmentId: deptSW.id, parentPositionId: posITDir.id, organizationId: org.id },
+  });
+  const posSrDev = await prisma.position.upsert({
+    where: { code_organizationId: { code: 'POS-SR-DEV', organizationId: org.id } },
+    update: {},
+    create: { title: 'Kıdemli Yazılım Mühendisi', code: 'POS-SR-DEV', level: 3, departmentId: deptSW.id, parentPositionId: posSWMgr.id, organizationId: org.id },
+  });
+  const posDev = await prisma.position.upsert({
+    where: { code_organizationId: { code: 'POS-DEV', organizationId: org.id } },
+    update: {},
+    create: { title: 'Yazılım Mühendisi', code: 'POS-DEV', level: 4, departmentId: deptSW.id, parentPositionId: posSrDev.id, organizationId: org.id },
+  });
+  const posFinMgr = await prisma.position.upsert({
+    where: { code_organizationId: { code: 'POS-FIN-MGR', organizationId: org.id } },
+    update: {},
+    create: { title: 'Finans Müdürü', code: 'POS-FIN-MGR', level: 1, departmentId: deptFinance.id, parentPositionId: posGM.id, organizationId: org.id },
+  });
+  const posSalesMgr = await prisma.position.upsert({
+    where: { code_organizationId: { code: 'POS-SALES-MGR', organizationId: org.id } },
+    update: {},
+    create: { title: 'Satış Müdürü', code: 'POS-SALES-MGR', level: 1, departmentId: deptSales.id, parentPositionId: posGM.id, organizationId: org.id },
+  });
+  console.log('Positions created: GM → IT Dir, Fin Mgr, Sales Mgr → SW Mgr → Sr Dev → Dev');
+
+  // ─── Link users to departments + positions ─────────────────────────────
+  await prisma.user.update({ where: { id: admin.id },
+    data: { departmentId: deptRoot.id, positionId: posGM.id, jobTitle: 'Genel Müdür', organizationId: org.id } });
+  await prisma.user.update({ where: { id: manager.id },
+    data: { departmentId: deptIT.id, positionId: posITDir.id, jobTitle: 'IT Direktörü', organizationId: org.id, upperManagerId: admin.id } });
+  await prisma.user.update({ where: { id: finance.id },
+    data: { departmentId: deptFinance.id, positionId: posFinMgr.id, jobTitle: 'Finans Müdürü', organizationId: org.id, upperManagerId: admin.id } });
+  await prisma.user.update({ where: { id: employee.id },
+    data: { departmentId: deptSW.id, positionId: posDev.id, jobTitle: 'Yazılım Mühendisi', organizationId: org.id, upperManagerId: admin.id } });
+  await prisma.user.update({ where: { id: employee2.id },
+    data: { departmentId: deptSales.id, positionId: posSalesMgr.id, jobTitle: 'Satış Müdürü', organizationId: org.id, upperManagerId: admin.id } });
+  console.log('Users linked: dept + position + upperManager');
+
   // Create expenses
   const categories = ['Travel', 'Accommodation', 'Food & Beverage', 'Transportation', 'Office Supplies'];
   const statuses: ExpenseStatus[] = [

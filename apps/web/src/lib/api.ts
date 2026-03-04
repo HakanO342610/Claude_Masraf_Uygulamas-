@@ -195,4 +195,29 @@ export const orgApi = {
   update: (id: string, data: any) => api.patch(`/organizations/${id}`, data),
 };
 
+export const departmentApi = {
+  getTree: (orgId?: string) => api.get('/departments/tree', { params: orgId ? { orgId } : {} }),
+  getAll: (orgId?: string) => api.get('/departments', { params: orgId ? { orgId } : {} }),
+  getById: (id: string) => api.get(`/departments/${id}`),
+  create: (data: any) => api.post('/departments', data),
+  update: (id: string, data: any) => api.patch(`/departments/${id}`, data),
+  delete: (id: string) => api.delete(`/departments/${id}`),
+};
+
+export const positionApi = {
+  getAll: (params?: { orgId?: string; departmentId?: string }) =>
+    api.get('/positions', { params }),
+  getById: (id: string) => api.get(`/positions/${id}`),
+  create: (data: any) => api.post('/positions', data),
+  update: (id: string, data: any) => api.patch(`/positions/${id}`, data),
+  delete: (id: string) => api.delete(`/positions/${id}`),
+};
+
+export const setupApi = {
+  getStatus: () => api.get('/setup/status'),
+  testConnection: (data: any) => api.post('/setup/test-connection', data),
+  complete: (data: any) => api.post('/setup/complete', data),
+  preview: (data: any) => api.post('/setup/preview', data),
+};
+
 export default api;
