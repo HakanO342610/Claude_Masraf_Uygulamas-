@@ -58,7 +58,206 @@ Table type of ZMASRAFF_S_POSITION
 
 ---
 
-## ABAP Sınıf — ZCL_EXPENSE_USER_LIST
+## ⭐ ZCL_EXPENSE_USER_LIST — V3 (HepsiBiz Proxy — ÖNERİLEN)
+
+> **Senaryo:** SAP HR tabloları (PA0001 vb.) boş.
+> Mevcut `MYDMG_GET_USER_LIST` mantığı birebir kullanılır — `/MASRAFF/CFG_01` ve `ZFI_MYDMG_AUTH` tablolarına dayanır.
+> HepsiBiz (`https://api.hepsibiz.com/v1/persons/list`) kaynak olur.
+
+```
+Node.js SapHcmAdapter
+  → SAP SICF /sap/bc/masraffco/user_list  (ZCL_EXPENSE_USER_LIST.handle_request)
+    → /MASRAFF/CFG_01 → cfgnm='MYDMG_USER_LIST' → https://api.hepsibiz.com/v1/persons/list
+    → ZFI_MYDMG_AUTH TYPE 04 (Basic Auth) + TYPE 05 (Form fields)
+    → HepsiBiz'den raw JSON al
+  ← {"PERSONS":[...], "ORG_UNITS":[], "POSITIONS":[]}
+← DB'ye sync
+```
+
+```abap
+CLASS zcl_expense_user_list DEFINITION
+  PUBLIC FINAL
+  CREATE PUBLIC.
+
+  PUBLIC SECTION.
+    INTERFACES if_http_extension.
+
+  PRIVATE SECTION.
+    METHODS get_users_json RETURNING VALUE(rv_json) TYPE string.
+
+ENDCLASS.
+
+CLASS zcl_expense_user_list IMPLEMENTATION.
+
+  METHOD if_http_extension~handle_request.
+    DATA lv_json TYPE string.
+    lv_json = get_users_json( ).
+    server->response->set_header_field(
+      name  = 'Content-Type'
+      value = 'application/json; charset=utf-8' ).
+    server->response->set_cdata( lv_json ).
+    server->response->set_status( code = 200 reason = 'OK' ).
+  ENDMETHOD.
+
+  METHOD get_users_json.
+    " MYDMG_GET_USER_LIST mantığını birebir kullanır
+    DATA: lv_url         TYPE string,
+          lo_http_client TYPE REF TO if_http_client,
+          lv_xjson       TYPE xstring,
+          lv_raw_json    TYPE string,
+          lt_cred        TYPE TABLE OF zfi_mydmg_auth,
+          ls_cred        TYPE zfi_mydmg_auth,
+          lv_username    TYPE string,
+          lv_password    TYPE string.
+
+    " URL: /MASRAFF/CFG_01 tablosundan al
+    SELECT SINGLE cfgvl FROM /masraff/cfg_01
+      INTO lv_url
+      WHERE cfgid = 'URL'
+        AND cfgnm = 'MYDMG_USER_LIST'.
+
+    IF sy-subrc NE 0 OR lv_url IS INITIAL.
+      rv_json = '{"PERSONS":[],"ORG_UNITS":[],"POSITIONS":[]}'.
+      RETURN.
+    ENDIF.
+
+    " HTTP client oluştur
+    cl_http_client=>create_by_url(
+      EXPORTING url    = lv_url
+      IMPORTING client = lo_http_client
+      EXCEPTIONS argument_not_found = 1
+                 plugin_not_active  = 2
+                 internal_error     = 3
+                 OTHERS             = 4 ).
+
+    IF sy-subrc NE 0.
+      rv_json = '{"PERSONS":[],"ORG_UNITS":[],"POSITIONS":[]}'.
+      RETURN.
+    ENDIF.
+
+    " Credential'ları al (TYPE 04 ve 05 — MYDMG ile aynı)
+    SELECT * FROM zfi_mydmg_auth
+      INTO TABLE lt_cred
+      WHERE type = '04' OR type = '05'.
+
+    lo_http_client->request->set_method( 'POST' ).
+
+    " TYPE 04: HTTP Basic Authentication
+    CLEAR ls_cred.
+    READ TABLE lt_cred INTO ls_cred WITH KEY type = '04'.
+    IF sy-subrc = 0.
+      lv_username = ls_cred-username.
+      lv_password = ls_cred-password.
+      lo_http_client->authenticate(
+        username = lv_username
+        password = lv_password ).
+    ENDIF.
+
+    " TYPE 05: Form field credentials
+    CLEAR ls_cred.
+    READ TABLE lt_cred INTO ls_cred WITH KEY type = '05'.
+    IF sy-subrc = 0.
+      lv_username = ls_cred-username.
+      lv_password = ls_cred-password.
+      lo_http_client->request->set_form_field(
+        name  = 'Username'
+        value = lv_username ).
+      lo_http_client->request->set_form_field(
+        name  = 'Password'
+        value = lv_password ).
+    ENDIF.
+
+    " Header'lar (MYDMG ile aynı)
+    lo_http_client->request->set_header_field(
+      name = 'content-type' value = 'application/x-www-form-urlencoded' ).
+    lo_http_client->request->set_header_field(
+      name = 'Charset' value = 'utf-8' ).
+    lo_http_client->request->set_header_field(
+      name = 'Accept-Charset' value = 'utf-8' ).
+    lo_http_client->request->set_header_field(
+      name = 'Accept' value = 'application/json' ).
+
+    " Gönder ve al
+    CALL METHOD lo_http_client->send
+      EXCEPTIONS
+        http_communication_failure = 1
+        OTHERS                     = 2.
+    CALL METHOD lo_http_client->receive
+      EXCEPTIONS
+        http_communication_failure = 1
+        OTHERS                     = 2.
+
+    IF sy-subrc NE 0.
+      rv_json = '{"PERSONS":[],"ORG_UNITS":[],"POSITIONS":[]}'.
+      lo_http_client->close( ).
+      RETURN.
+    ENDIF.
+
+    " Response'u al
+    lo_http_client->response->get_data( RECEIVING data = lv_xjson ).
+    lo_http_client->close( ).
+
+    CALL FUNCTION 'ECATT_CONV_XSTRING_TO_STRING'
+      EXPORTING
+        im_xstring  = lv_xjson
+        im_encoding = 'UTF-8'
+      IMPORTING
+        ex_string   = lv_raw_json.
+
+    " Response formatını belirle ve wrap et:
+    " [ ... ]            → array → {"PERSONS":[...],"ORG_UNITS":[],"POSITIONS":[]}
+    " {"PERSONS":...}    → zaten doğru format, ORG_UNITS/POSITIONS ekle
+    " diğer             → boş response döndür
+    DATA: lv_first TYPE c LENGTH 1.
+    lv_first = lv_raw_json.   " İlk karakter
+
+    IF lv_first = '['.
+      " Array → PERSONS wrapper
+      CONCATENATE '{"PERSONS":' lv_raw_json
+                  ',"ORG_UNITS":[],"POSITIONS":[]}'
+        INTO rv_json.
+    ELSEIF lv_raw_json CS '"PERSONS"'.
+      " Zaten PERSONS var
+      IF NOT lv_raw_json CS '"ORG_UNITS"'.
+        " ORG_UNITS eksik — sona ekle
+        DATA lv_len TYPE i.
+        lv_len = strlen( lv_raw_json ) - 1.
+        CONCATENATE lv_raw_json(lv_len)
+                    ',"ORG_UNITS":[],"POSITIONS":[]}'
+          INTO rv_json.
+      ELSE.
+        rv_json = lv_raw_json.
+      ENDIF.
+    ELSE.
+      rv_json = '{"PERSONS":[],"ORG_UNITS":[],"POSITIONS":[]}'.
+    ENDIF.
+
+  ENDMETHOD.
+
+ENDCLASS.
+```
+
+### SICF Aktivasyon
+**Transaction:** SICF
+**Yol:** `/sap/bc/masraffco/user_list`
+**Handler List:** `ZCL_EXPENSE_USER_LIST`
+**Logon:** SAP user (Masrafco kullanıcısı)
+
+### Node.js .env Ayarları
+```
+IDENTITY_PROVIDER=SAP_HCM
+SAP_BASE_URL=http://sap-sunucu:8000
+SAP_USERNAME=masrafco_user
+SAP_PASSWORD=masrafco_pass
+SAP_USER_LIST_PATH=/sap/bc/masraffco/user_list
+```
+
+---
+
+## ABAP Sınıf — ZCL_EXPENSE_USER_LIST V2 (SAP HR Tabloları — HR modülü aktifse)
+
+> **Senaryo:** SAP HR tabloları (PA0001, PA0002, PA0105, HRP1000, HRP1001) dolu.
+> Bu versiyon SAP HR tablarını doğrudan okur.
 
 ### PUBLIC SECTION
 

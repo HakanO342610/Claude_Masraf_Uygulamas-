@@ -97,6 +97,7 @@ class _DeptNode extends StatelessWidget {
     final code = dept['code'] as String? ?? '';
     final children = (dept['children'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final manager = dept['manager'] as Map<String, dynamic>?;
+    final managerPosition = dept['managerPosition'] as Map<String, dynamic>?;
     final counts = dept['_count'] as Map<String, dynamic>?;
     final userCount = counts?['users'] ?? 0;
     final posCount = counts?['positions'] ?? 0;
@@ -134,6 +135,12 @@ class _DeptNode extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(code, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                if (managerPosition != null)
+                  Row(children: [
+                    const Icon(Icons.work_outline, size: 12),
+                    const SizedBox(width: 4),
+                    Text(managerPosition['title'] as String? ?? '', style: const TextStyle(fontSize: 11)),
+                  ]),
                 if (manager != null)
                   Row(children: [
                     const Icon(Icons.person_outline, size: 12),

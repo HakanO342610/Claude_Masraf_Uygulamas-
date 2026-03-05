@@ -192,7 +192,7 @@
 - [ ] App Store / Google Play yayınlama → flutter_launcher_icons + flutter_native_splash config hazır, PNG assetler placeholder
 - [ ] Monitoring & alerting setup
 
-### FAZ 11 — Kullanıcı & Organizasyon Yönetimi (3 Kurulum Modeli) 🟡 DEVAM EDİYOR (2026-03-04, Oturum #9)
+### FAZ 11 — Kullanıcı & Organizasyon Yönetimi (3 Kurulum Modeli) 🟡 DEVAM EDİYOR (2026-03-05, Oturum #10)
 
 > **Amaç:** Ürün kurulumunda 3 farklı model seçimi — organizasyon şeması, departman/pozisyon hiyerarşisi, çalışan-yönetici-üst yönetici ilişkileri
 
@@ -238,24 +238,38 @@
 - [x] **11.19 — Seed Data:** Org + 6 departman (GM→BT,FIN,SAT→BT-SW,BT-INF) + 7 pozisyon + kullanıcı-departman-pozisyon-upperManager bağlantıları
 - [x] **SapHcmAdapter:** UPPER_MANAGER_EMAIL alanı eklendi (r.UPPER_MANAGER_EMAIL mapping)
 
-**Bekleyen Alt Fazlar:**
+**Tamamlanan Alt Fazlar (Oturum #10 devam):**
 
-- [ ] **11.13 — DB Migration Uygulama (ÖNCELİK):** Docker aktifken çalıştır:
-  ```bash
-  docker compose up -d postgres
-  cd apps/backend && npx prisma migrate deploy
-  # veya: npx prisma db push
-  ```
+- [x] **11.13 — DB Migration:** `npx prisma migrate deploy && npx prisma generate` çalıştırıldı ✅
+- [x] **11.14 — Swagger + E2E testler** ✅
+- [x] **11.17 — E2E testler** ✅
+- [x] **managerPositionId:** Department'a Position FK eklendi (schema + migration + service + web + mobile)
 
-- [ ] **11.14 — Backend Entegrasyon Testi:**
-  - Swagger: `GET /departments/tree`, `POST /departments`, `GET /setup/status`
+**FAZ 12 — SAP HCM ABAP Deploy 🟡 DEVAM EDİYOR**
 
-- [ ] **11.17 — E2E Testler (Web):**
-  - `e2e/org-chart.spec.ts`, `e2e/positions.spec.ts`, `e2e/setup-wizard.spec.ts`
+- [x] ZCL_EXPENSE_USER_LIST sınıfı SE24'te oluşturuldu ve aktive edildi
+- [x] SICF: `/sap/bc/masraffco/user_list` servisi oluşturuldu (Masraffco altında)
+- [x] ZCL_MASRAFF'a `WHEN 'user_list'` route eklendi → `lo_exp->expense_user_list` çağrısı
+- [x] Endpoint çalışıyor: `{"PERSONS":[],"ORG_UNITS":[],"POSITIONS":[]}` dönüyor
+- [x] Node.js .env güncellendi: `IDENTITY_PROVIDER=SAP_HCM`, `SAP_BASE_URL=http://sapr3-test.hepsiburada.dmz:8000`
+- [x] `/api/v1/identity/sync` çalışıyor (`total:0` — data boş geliyor)
+
+**⚠️ BEKLEYEN SORUN (Ertelendi — Oturum #11):**
+- Production SAP'ta da USERLIST metodu boş dönüyor (160µs runtime)
+- Kök sebep: `/masraff/cfg_01` tablosunda `CFGID=URL, CFGNM=MYDMG_USER_LIST` kaydı yoktu → URL boş → HTTP client oluşturulamıyor
+- URL kaydı eklendi, `ZFI_MYDMG_AUTH` type='04'/'05' kredansiyelleri kontrol edilmeli
+- Test sonucu bekleniyor — şimdilik ertelendi, diğer fazlara geçildi
+
+**SAP Teknik Detaylar:**
+- SICF URL: `http://sapr3-test.hepsiburada.dmz:8000/sap/bc/masraffco/user_list`
+- ABAP sınıf: `ZCL_EXPENSE_USER_LIST` → metod: `EXPENSE_USER_LIST` (PUBLIC, CHANGING cv_json TYPE string)
+- ZCL_MASRAFF HANDLE_REQUEST: `WHEN 'user_list'` → `CREATE OBJECT lo_exp TYPE zcl_expense_user_list` → `lo_exp->expense_user_list`
+- cl_fdt_json parametreleri: `ia_data` (EXPORTING), `rv_json` (RECEIVING)
+- ABAP versiyonu: 7.0 — inline DATA(), &&, string(var_len) KULLANILMAZ
 
 - [ ] **11.20 — Git Commit & Push:**
   ```bash
-  git add . && git commit -m "feat(faz11): 3-model kurulum — ABAP V2, dept/pos hiyerarşisi, mobile org chart, unit testler"
+  git add . && git commit -m "feat(faz11-12): ABAP deploy, dept/pos hiyerarşisi, SAP HCM sync"
   git push origin main
   ```
 

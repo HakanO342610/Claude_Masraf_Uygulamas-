@@ -6,6 +6,7 @@ export interface CreateDepartmentDto {
   code: string;
   parentId?: string;
   managerId?: string;
+  managerPositionId?: string;
   organizationId?: string;
   level?: number;
 }
@@ -15,6 +16,7 @@ export interface UpdateDepartmentDto {
   code?: string;
   parentId?: string | null;
   managerId?: string | null;
+  managerPositionId?: string | null;
   level?: number;
   isActive?: boolean;
 }
@@ -32,6 +34,7 @@ export class DepartmentService {
       where,
       include: {
         manager: { select: { id: true, name: true, email: true } },
+        managerPosition: { select: { id: true, title: true, code: true } },
         _count: { select: { users: true, positions: true } },
       },
       orderBy: [{ level: 'asc' }, { name: 'asc' }],
@@ -67,6 +70,7 @@ export class DepartmentService {
       include: {
         parent: { select: { id: true, name: true, code: true } },
         manager: { select: { id: true, name: true, email: true } },
+        managerPosition: { select: { id: true, title: true, code: true } },
         _count: { select: { users: true, positions: true, children: true } },
       },
       orderBy: [{ level: 'asc' }, { name: 'asc' }],
@@ -79,6 +83,7 @@ export class DepartmentService {
       include: {
         parent: { select: { id: true, name: true, code: true } },
         manager: { select: { id: true, name: true, email: true } },
+        managerPosition: { select: { id: true, title: true, code: true } },
         children: {
           select: { id: true, name: true, code: true, level: true, isActive: true },
           orderBy: { name: 'asc' },
@@ -113,6 +118,7 @@ export class DepartmentService {
         code: dto.code,
         parentId: dto.parentId,
         managerId: dto.managerId,
+        managerPositionId: dto.managerPositionId,
         organizationId: dto.organizationId,
         level,
       },
@@ -128,6 +134,7 @@ export class DepartmentService {
     if (dto.code !== undefined) data.code = dto.code;
     if (dto.parentId !== undefined) data.parentId = dto.parentId;
     if (dto.managerId !== undefined) data.managerId = dto.managerId;
+    if (dto.managerPositionId !== undefined) data.managerPositionId = dto.managerPositionId;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
     // Level yeniden hesapla

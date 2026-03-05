@@ -37,13 +37,15 @@ export default function OrgChartPage() {
   const [selectedDept, setSelectedDept] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
-  const [formData, setFormData] = useState({ name: '', code: '', parentId: '', managerId: '' });
+  const [formData, setFormData] = useState({ name: '', code: '', parentId: '', managerId: '', managerPositionId: '' });
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allPositions, setAllPositions] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadTree();
     loadUsers();
+    loadPositions();
   }, []);
 
   const loadTree = async () => {
@@ -65,6 +67,13 @@ export default function OrgChartPage() {
     try {
       const { data } = await usersApi.getAll();
       setAllUsers(Array.isArray(data) ? data : data.data || []);
+    } catch {}
+  };
+
+  const loadPositions = async () => {
+    try {
+      const { data } = await positionApi.getAll();
+      setAllPositions(Array.isArray(data) ? data : data.data || []);
     } catch {}
   };
 
@@ -100,7 +109,7 @@ export default function OrgChartPage() {
 
   const openCreateForm = (parentId?: string) => {
     setFormMode('create');
-    setFormData({ name: '', code: '', parentId: parentId || '', managerId: '' });
+    setFormData({ name: '', code: '', parentId: parentId || '', managerId: '', managerPositionId: '' });
     setShowForm(true);
   };
 
@@ -111,6 +120,7 @@ export default function OrgChartPage() {
       code: dept.code,
       parentId: dept.parentId || '',
       managerId: dept.manager?.id || '',
+      managerPositionId: dept.managerPosition?.id || '',
     });
     setSelectedDept(dept);
     setShowForm(true);
@@ -125,6 +135,7 @@ export default function OrgChartPage() {
           code: formData.code,
           parentId: formData.parentId || undefined,
           managerId: formData.managerId || undefined,
+          managerPositionId: formData.managerPositionId || undefined,
         });
       } else {
         await departmentApi.update(selectedDept.id, {
@@ -132,6 +143,7 @@ export default function OrgChartPage() {
           code: formData.code,
           parentId: formData.parentId || null,
           managerId: formData.managerId || null,
+          managerPositionId: formData.managerPositionId || null,
         });
       }
       setShowForm(false);
@@ -320,6 +332,15 @@ export default function OrgChartPage() {
                   <span className="text-gray-900 dark:text-white">{selectedDept.manager.name}</span>
                 </div>
               )}
+              {selectedDept.managerPosition && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Yönetici Pozisyon:</span>
+                  <span className="text-gray-900 dark:text-white text-xs">
+                    {selectedDept.managerPosition.title}
+                    <span className="text-gray-400 ml-1">({selectedDept.managerPosition.code})</span>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Kullanıcılar */}
@@ -412,7 +433,22 @@ export default function OrgChartPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Yönetici</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Yönetici Pozisyon</label>
+                <select
+                  value={formData.managerPositionId}
+                  onChange={(e) => setFormData(prev => ({ ...prev, managerPositionId: e.target.value }))}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">Seçiniz</option>
+                  {allPositions.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title} ({p.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Yönetici Kişi</label>
                 <select
                   value={formData.managerId}
                   onChange={(e) => setFormData(prev => ({ ...prev, managerId: e.target.value }))}
